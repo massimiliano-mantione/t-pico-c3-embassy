@@ -12,3 +12,10 @@ Cargo.lock
 
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
+
+# Panic message copied from target
+message.bin
+
+# WIFI SSID and secret
+src/WIFI_SSID.txt
+src/WIFI_SECRET.txt
