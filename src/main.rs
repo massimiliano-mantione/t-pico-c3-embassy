@@ -4,18 +4,27 @@
 #![feature(async_fn_in_trait)]
 #![allow(incomplete_features)]
 
+use core::convert::Infallible;
 use core::str;
+use display_interface_spi::SPIInterface;
 use embassy_executor::{Executor, Spawner};
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::multicore::{spawn_core1, Stack};
-use embassy_rp::peripherals::{PIN_25, USB};
+use embassy_rp::peripherals::{PIN_0, PIN_1, PIN_25, PIN_5, USB};
 use embassy_rp::pwm::{Config as PwmConfig, Pwm};
+use embassy_rp::spi::{self, Spi};
 use embassy_rp::usb::{Driver, InterruptHandler as InterruptHandlerUsb};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-use embassy_time::{Duration, Timer};
+use embassy_time::{Delay, Duration, Timer};
+use embedded_graphics_core::pixelcolor::Rgb565;
+use embedded_graphics_core::pixelcolor::RgbColor;
+use embedded_graphics_core::prelude::DrawTarget;
+use embedded_hal_0::digital::v2::OutputPin;
+use embedded_hal_1::delay::DelayUs;
 use fixed::traits::ToFixed;
+use mipidsi::Builder;
 use rp2040_panic_usb_boot as _;
 use static_cell::StaticCell;
 
@@ -94,11 +103,76 @@ async fn core1_task(mut led: Output<'static, PIN_25>) -> ! {
     }
 }
 
+struct TftPin<'a, PIN: embassy_rp::gpio::Pin> {
+    pin: Output<'a, PIN>,
+}
+
+impl<'a, PIN> TftPin<'a, PIN>
+where
+    PIN: embassy_rp::gpio::Pin,
+{
+    pub fn new(pin: PIN, initial_output: Level) -> Self {
+        Self {
+            pin: Output::new(pin, initial_output),
+        }
+    }
+}
+
+impl<'a, PIN> OutputPin for TftPin<'a, PIN>
+where
+    PIN: embassy_rp::gpio::Pin,
+{
+    type Error = Infallible;
+
+    fn set_low(&mut self) -> Result<(), Self::Error> {
+        self.pin.set_low();
+        Ok(())
+    }
+
+    fn set_high(&mut self) -> Result<(), Self::Error> {
+        self.pin.set_high();
+        Ok(())
+    }
+}
+
+type TftDc<'a> = TftPin<'a, PIN_1>;
+type TftCs<'a> = TftPin<'a, PIN_5>;
+type TftRst<'a> = TftPin<'a, PIN_0>;
+
 #[cortex_m_rt::entry]
 fn main() -> ! {
     let p = embassy_rp::init(Default::default());
     let driver = Driver::new(p.USB, Irqs);
     let led = Output::new(p.PIN_25, Level::Low);
+
+    let tft_miso = p.PIN_16;
+    let tft_mosi = p.PIN_3;
+    let tft_clk = p.PIN_2;
+    let tft_cs = p.PIN_5;
+    let tft_dc = p.PIN_1;
+    let mut tft_bl = Output::new(p.PIN_4, Level::High);
+    tft_bl.set_high();
+
+    let mut tft_delay = Delay;
+
+    let mut config = spi::Config::default();
+    config.frequency = 2_000_000;
+    let spi = Spi::new_blocking(p.SPI0, tft_clk, tft_mosi, tft_miso, config);
+
+    let di = SPIInterface::new(
+        spi,
+        TftDc::new(tft_dc, Level::Low),
+        TftCs::new(tft_cs, Level::Low),
+    );
+
+    let mut display = Builder::st7789_pico1(di)
+        .init::<TftRst>(&mut tft_delay, None)
+        .unwrap();
+    display.clear(Rgb565::WHITE).unwrap();
+    tft_delay.delay_ms(500);
+    display.clear(Rgb565::BLACK).unwrap();
+    tft_delay.delay_ms(500);
+    display.clear(Rgb565::WHITE).unwrap();
 
     spawn_core1(p.CORE1, unsafe { &mut CORE1_STACK }, move || {
         let executor1 = EXECUTOR1.init(Executor::new());
