@@ -10,14 +10,19 @@ use display_interface_spi::SPIInterface;
 use embassy_executor::{Executor, Spawner};
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Input, Level, Output, Pull};
+use embassy_rp::i2c::{
+    self, Async, Config as I2cConfig, I2c, InterruptHandler as InterruptHandlerI2c,
+};
 use embassy_rp::multicore::{spawn_core1, Stack};
-use embassy_rp::peripherals::{PIN_0, PIN_1, PIN_25, PIN_5, USB};
+use embassy_rp::peripherals::{I2C0, PIN_0, PIN_1, PIN_12, PIN_13, PIN_25, PIN_5, USB};
 use embassy_rp::pwm::{Config as PwmConfig, Pwm};
 use embassy_rp::spi::{self, Spi};
 use embassy_rp::usb::{Driver, InterruptHandler as InterruptHandlerUsb};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Delay, Duration, Timer};
+use embedded_graphics::prelude::*;
+use embedded_graphics::primitives::*;
 use embedded_graphics_core::pixelcolor::Rgb565;
 use embedded_graphics_core::pixelcolor::RgbColor;
 use embedded_graphics_core::prelude::DrawTarget;
@@ -36,6 +41,7 @@ const PWM_TOP: u16 = 1000;
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandlerUsb<USB>;
+    I2C0_IRQ => InterruptHandlerI2c<I2C0>;
 });
 
 #[embassy_executor::task]
@@ -87,7 +93,10 @@ async fn core0_task() -> ! {
 }
 
 #[embassy_executor::task]
-async fn core1_task(mut led: Output<'static, PIN_25>) -> ! {
+async fn core1_task(mut led: Output<'static, PIN_25>, sda: PIN_12, scl: PIN_13, i2c_p: I2C0) -> ! {
+    log::info!("set up i2c ");
+    let mut i2c = i2c::I2c::new_async(i2c_p, scl, sda, Irqs, I2cConfig::default());
+
     log::info!("Hello from core 1");
     loop {
         match CHANNEL.recv().await {
@@ -156,7 +165,7 @@ fn main() -> ! {
     let mut tft_delay = Delay;
 
     let mut config = spi::Config::default();
-    config.frequency = 2_000_000;
+    config.frequency = 27_000_000;
     let spi = Spi::new_blocking(p.SPI0, tft_clk, tft_mosi, tft_miso, config);
 
     let di = SPIInterface::new(
@@ -171,13 +180,37 @@ fn main() -> ! {
     display.clear(Rgb565::WHITE).unwrap();
     tft_delay.delay_ms(500);
     display.clear(Rgb565::BLACK).unwrap();
-    tft_delay.delay_ms(500);
-    display.clear(Rgb565::WHITE).unwrap();
+
+    let circle1 =
+        Circle::new(Point::new(128, 64), 64).into_styled(PrimitiveStyle::with_fill(Rgb565::RED));
+    let circle2 = Circle::new(Point::new(64, 64), 64)
+        .into_styled(PrimitiveStyle::with_stroke(Rgb565::GREEN, 1));
+
+    let blue_with_red_outline = PrimitiveStyleBuilder::new()
+        .fill_color(Rgb565::BLUE)
+        .stroke_color(Rgb565::RED)
+        .stroke_width(1) // > 1 is not currently supported in embedded-graphics on triangles
+        .build();
+    let triangle = Triangle::new(
+        Point::new(40, 120),
+        Point::new(40, 220),
+        Point::new(140, 120),
+    )
+    .into_styled(blue_with_red_outline);
+    let line =
+        Line::new(Point::new(180, 160), Point::new(239, 239))
+            .into_styled(PrimitiveStyle::<Rgb565>::with_stroke(Rgb565::WHITE, 10));
+    circle1.draw(&mut display).ok();
+    circle2.draw(&mut display).ok();
+    triangle.draw(&mut display).ok();
+    line.draw(&mut display).ok();
 
     spawn_core1(p.CORE1, unsafe { &mut CORE1_STACK }, move || {
         let executor1 = EXECUTOR1.init(Executor::new());
         executor1.run(|spawner| {
-            spawner.spawn(core1_task(led)).unwrap();
+            spawner
+                .spawn(core1_task(led, p.PIN_12, p.PIN_13, p.I2C0))
+                .unwrap();
         });
     });
 
