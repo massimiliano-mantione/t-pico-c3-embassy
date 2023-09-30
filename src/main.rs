@@ -11,7 +11,8 @@ use embassy_executor::{Executor, Spawner};
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::i2c::{
-    self, Async, Config as I2cConfig, I2c, InterruptHandler as InterruptHandlerI2c,
+    AbortReason as I2cAbortReason, Async, Config as I2cConfig, Error as I2cError, I2c as RpI2c,
+    InterruptHandler as InterruptHandlerI2c,
 };
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{I2C0, PIN_0, PIN_1, PIN_12, PIN_13, PIN_25, PIN_5, USB};
@@ -28,6 +29,7 @@ use embedded_graphics_core::pixelcolor::RgbColor;
 use embedded_graphics_core::prelude::DrawTarget;
 use embedded_hal_0::digital::v2::OutputPin;
 use embedded_hal_1::delay::DelayUs;
+use embedded_hal_async::i2c::I2c;
 use fixed::traits::ToFixed;
 use mipidsi::Builder;
 use rp2040_panic_usb_boot as _;
@@ -92,23 +94,79 @@ async fn core0_task() -> ! {
     }
 }
 
+fn i2c_error_message(err: &I2cError) -> &'static str {
+    match err {
+        I2cError::Abort(reason) => match reason {
+            I2cAbortReason::NoAcknowledge => "abort: no acknowledge",
+            I2cAbortReason::ArbitrationLoss => "abort: arbitration loss",
+            I2cAbortReason::Other(_) => "abort: other",
+        },
+        I2cError::InvalidReadBufferLength => "invalid read buffer length",
+        I2cError::InvalidWriteBufferLength => "invalid write buffer length",
+        I2cError::AddressOutOfRange(_) => "address out of range",
+        I2cError::AddressReserved(_) => "address reserved",
+    }
+}
+
+type I2cBus = RpI2c<'static, I2C0, Async>;
+const TCA9548A_ADDR: u16 = 0x70;
+const DISTANCE_SENSOR_ADDR: u16 = 0x80 >> 1;
+const DISTANCE_SENSOR_REG: u8 = 0x5E;
+
+async fn select_i2c_channel(i2c: &mut I2cBus, chan: usize) {
+    if let Err(err) = i2c.write_async(TCA9548A_ADDR, [1 << chan]).await {
+        log::error!("I2C select write error: {}", i2c_error_message(&err));
+    } else {
+        log::info!("I2C select OK");
+    }
+}
+
+async fn read_distance(i2c: &mut I2cBus) -> u16 {
+    let mut result_buf = [0u8; 2];
+    match i2c
+        .write_read(
+            DISTANCE_SENSOR_ADDR,
+            &[DISTANCE_SENSOR_REG],
+            &mut result_buf,
+        )
+        .await
+    {
+        Ok(_) => {
+            let distance = ((result_buf[0] as u16) << 8) | (result_buf[1] as u16);
+            distance
+        }
+        Err(err) => {
+            log::error!("I2C read distance error: {}", i2c_error_message(&err));
+            0
+        }
+    }
+}
+
 #[embassy_executor::task]
 async fn core1_task(mut led: Output<'static, PIN_25>, sda: PIN_12, scl: PIN_13, i2c_p: I2C0) -> ! {
     log::info!("set up i2c ");
-    let mut i2c = i2c::I2c::new_async(i2c_p, scl, sda, Irqs, I2cConfig::default());
+    let mut i2c: I2cBus = RpI2c::new_async(i2c_p, scl, sda, Irqs, I2cConfig::default());
 
     log::info!("Hello from core 1");
     loop {
-        match CHANNEL.recv().await {
+        let chan = match CHANNEL.recv().await {
             LedState::On => {
                 log::info!("core 1 gets ON");
                 led.set_high();
+                1
             }
             LedState::Off => {
                 log::info!("core 1 gets OFF");
                 led.set_low();
+                0
             }
-        }
+        };
+        // select_i2c_channel(&mut i2c, chan).await;
+        log::info!(
+            "I2C read distance {}: {}",
+            chan,
+            read_distance(&mut i2c).await
+        );
     }
 }
 
