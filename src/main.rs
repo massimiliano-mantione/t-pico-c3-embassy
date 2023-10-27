@@ -16,11 +16,12 @@ use embassy_rp::i2c::{
 };
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{
-    I2C0, PIN_0, PIN_1, PIN_10, PIN_12, PIN_13, PIN_16, PIN_2, PIN_25, PIN_3, PIN_4, PIN_5, PIN_6,
-    PIN_7, SPI0, USB,
+    I2C0, PIN_0, PIN_1, PIN_10, PIN_12, PIN_13, PIN_16, PIN_17, PIN_2, PIN_25, PIN_3, PIN_4, PIN_5,
+    PIN_6, PIN_7, PIN_8, PIN_9, SPI0, UART0, UART1, USB,
 };
 use embassy_rp::pwm::{Config as PwmConfig, Pwm};
 use embassy_rp::spi::{self, Spi};
+use embassy_rp::uart::BufferedInterruptHandler;
 use embassy_rp::usb::{Driver, InterruptHandler as InterruptHandlerUsb};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
@@ -38,6 +39,7 @@ use mipidsi::Builder;
 use rp2040_panic_usb_boot as _;
 use static_cell::StaticCell;
 
+mod imu;
 mod lasers;
 mod lcd;
 mod uformat;
@@ -51,6 +53,8 @@ const PWM_TOP: u16 = 1000;
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandlerUsb<USB>;
     I2C0_IRQ => InterruptHandlerI2c<I2C0>;
+    UART0_IRQ => BufferedInterruptHandler<UART0>;
+    UART1_IRQ => BufferedInterruptHandler<UART1>;
 });
 
 #[embassy_executor::task]
@@ -61,6 +65,11 @@ async fn logger_task(driver: Driver<'static, USB>) {
 #[embassy_executor::task]
 async fn lasers_task(i2c: lasers::I2cBus) {
     lasers::lasers_task(i2c).await
+}
+
+#[embassy_executor::task]
+async fn imu_task(uart0: UART0, pin_16: PIN_16, pin_17: PIN_17) {
+    imu::imu_task(uart0, pin_16, pin_17).await
 }
 
 fn level2str(l: Level) -> &'static str {
@@ -115,6 +124,19 @@ async fn core0_task(mut input: Input<'static, PIN_7>) -> ! {
             lcd::VISUAL_STATE.signal(lcd::VisualState { value: l[0] });
         }
 
+        if imu::IMU_DATA.signaled() {
+            let data = imu::IMU_DATA.wait().await;
+            log::info!(
+                "IMU R {} P {} Y {}   F {} S {} V {}",
+                data.roll,
+                data.pitch,
+                data.yaw,
+                data.forward,
+                data.side,
+                data.vertical
+            );
+        }
+
         match input.get_level() {
             Level::Low => {
                 log::info!("button 0 ON");
@@ -130,7 +152,7 @@ async fn core0_task(mut input: Input<'static, PIN_7>) -> ! {
 async fn tft_task(
     spi: SPI0,
     bl: PIN_4,
-    tft_miso: PIN_16,
+    tft_miso: PIN_0,
     tft_mosi: PIN_3,
     tft_clk: PIN_2,
     tft_cs: PIN_5,
@@ -143,7 +165,7 @@ async fn tft_task(
 async fn core1_task(
     spi: SPI0,
     bl: PIN_4,
-    tft_miso: PIN_16,
+    tft_miso: PIN_0,
     tft_mosi: PIN_3,
     tft_clk: PIN_2,
     tft_cs: PIN_5,
@@ -172,15 +194,11 @@ fn main() -> ! {
     // Init TFT display
     let spi0 = p.SPI0;
     let bl = p.PIN_4;
-    let tft_miso: PIN_16 = p.PIN_16;
+    let tft_miso: PIN_0 = p.PIN_0;
     let tft_mosi: PIN_3 = p.PIN_3;
     let tft_clk: PIN_2 = p.PIN_2;
     let tft_cs: PIN_5 = p.PIN_5;
     let tft_dc: PIN_1 = p.PIN_1;
-
-    log::info!("set up i2c ");
-    let i2c: lasers::I2cBus =
-        RpI2c::new_async(p.I2C0, p.PIN_13, p.PIN_12, Irqs, I2cConfig::default());
 
     spawn_core1(p.CORE1, unsafe { &mut CORE1_STACK }, move || {
         let executor1 = EXECUTOR1.init(Executor::new());
@@ -193,10 +211,17 @@ fn main() -> ! {
         });
     });
 
+    log::info!("set up i2c ");
+    let i2c: lasers::I2cBus =
+        RpI2c::new_async(p.I2C0, p.PIN_13, p.PIN_12, Irqs, I2cConfig::default());
+
     let executor0 = EXECUTOR0.init(Executor::new());
     executor0.run(|spawner| {
         spawner.spawn(logger_task(driver)).unwrap();
         spawner.spawn(lasers_task(i2c)).unwrap();
+        spawner
+            .spawn(imu_task(p.UART0, p.PIN_16, p.PIN_17))
+            .unwrap();
         spawner.spawn(core0_task(right_pin)).unwrap();
     });
 

@@ -67,7 +67,7 @@ type TftRst<'a> = TftPin<'a, PIN_0>;
 pub async fn tft_task(
     spi: SPI0,
     bl: PIN_4,
-    tft_miso: PIN_16,
+    tft_miso: PIN_0,
     tft_mosi: PIN_3,
     tft_clk: PIN_2,
     tft_cs: PIN_5,
