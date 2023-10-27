@@ -16,7 +16,8 @@ use embassy_rp::i2c::{
 };
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{
-    I2C0, PIN_0, PIN_1, PIN_12, PIN_13, PIN_25, PIN_5, PIN_6, PIN_7, USB,
+    I2C0, PIN_0, PIN_1, PIN_10, PIN_12, PIN_13, PIN_16, PIN_2, PIN_25, PIN_3, PIN_4, PIN_5, PIN_6,
+    PIN_7, SPI0, USB,
 };
 use embassy_rp::pwm::{Config as PwmConfig, Pwm};
 use embassy_rp::spi::{self, Spi};
@@ -37,6 +38,10 @@ use mipidsi::Builder;
 use rp2040_panic_usb_boot as _;
 use static_cell::StaticCell;
 
+mod lasers;
+mod lcd;
+mod uformat;
+
 //const WIFI_SSID: &'static str = include_str!("WIFI_SSID.txt");
 //const WIFI_SECRET: &'static str = include_str!("WIFI_SECRET.txt");
 
@@ -51,6 +56,11 @@ bind_interrupts!(struct Irqs {
 #[embassy_executor::task]
 async fn logger_task(driver: Driver<'static, USB>) {
     embassy_usb_logger::run!(1024, log::LevelFilter::Info, driver);
+}
+
+#[embassy_executor::task]
+async fn lasers_task(i2c: lasers::I2cBus) {
+    lasers::lasers_task(i2c).await
 }
 
 fn level2str(l: Level) -> &'static str {
@@ -76,7 +86,6 @@ fn pwm_config(duty_a: u16, duty_b: u16) -> PwmConfig {
 static mut CORE1_STACK: Stack<16384> = Stack::new();
 static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
-static CHANNEL: Channel<CriticalSectionRawMutex, LedState, 1> = Channel::new();
 
 enum LedState {
     On,
@@ -84,202 +93,102 @@ enum LedState {
 }
 
 #[embassy_executor::task]
-async fn core0_task(mut input: Input<'static, PIN_1>) -> ! {
+async fn core0_task(mut input: Input<'static, PIN_7>) -> ! {
     log::info!("Hello from core 0");
     loop {
         input.wait_for_any_edge().await;
+
+        if lasers::RAW_LASER_READINGS.signaled() {
+            let l = lasers::RAW_LASER_READINGS.wait().await;
+            log::info!(
+                "L {} {} {} {} {} {} {} {}",
+                l[0],
+                l[1],
+                l[2],
+                l[3],
+                l[4],
+                l[5],
+                l[6],
+                l[7]
+            );
+            log::info!("core 0 sends value");
+            lcd::VISUAL_STATE.signal(lcd::VisualState { value: l[0] });
+        }
+
         match input.get_level() {
             Level::Low => {
-                log::info!("core 0 sends ON");
-                CHANNEL.send(LedState::On).await;
+                log::info!("button 0 ON");
             }
             Level::High => {
-                log::info!("core 0 sends OFF");
-                CHANNEL.send(LedState::Off).await;
+                log::info!("button 0 OFF");
             }
-        }
-    }
-}
-
-fn i2c_error_message(err: &I2cError) -> &'static str {
-    match err {
-        I2cError::Abort(reason) => match reason {
-            I2cAbortReason::NoAcknowledge => "abort: no acknowledge",
-            I2cAbortReason::ArbitrationLoss => "abort: arbitration loss",
-            I2cAbortReason::Other(_) => "abort: other",
-        },
-        I2cError::InvalidReadBufferLength => "invalid read buffer length",
-        I2cError::InvalidWriteBufferLength => "invalid write buffer length",
-        I2cError::AddressOutOfRange(_) => "address out of range",
-        I2cError::AddressReserved(_) => "address reserved",
-    }
-}
-
-type I2cBus = RpI2c<'static, I2C0, Async>;
-const TCA9548A_ADDR: u16 = 0x70;
-const GP2Y0E02B_ADDR: u16 = 0x40;
-const GP2Y0E02B_REG: u8 = 0x5E;
-
-// BNO055
-// BLACK  SDA
-// RED    SCL
-// WHITE  GND
-// YELLOW VCC
-
-async fn select_i2c_channel(i2c: &mut I2cBus, chan: usize) {
-    if let Err(err) = i2c.write_async(TCA9548A_ADDR, [1 << chan]).await {
-        log::error!("I2C select write error: {}", i2c_error_message(&err));
-    } else {
-        log::info!("I2C select OK");
-    }
-}
-
-async fn read_distance(i2c: &mut I2cBus) -> u16 {
-    let mut result_buf = [0u8; 2];
-    match i2c
-        .write_read(GP2Y0E02B_ADDR, &[GP2Y0E02B_REG], &mut result_buf)
-        .await
-    {
-        Ok(_) => {
-            let distance = ((result_buf[0] as u16) << 8) | (result_buf[1] as u16);
-            distance
-        }
-        Err(err) => {
-            log::error!("I2C read distance error: {}", i2c_error_message(&err));
-            0
         }
     }
 }
 
 #[embassy_executor::task]
-async fn core1_task(mut led: Output<'static, PIN_0>, sda: PIN_12, scl: PIN_13, i2c_p: I2C0) -> ! {
-    log::info!("set up i2c ");
-    let mut i2c: I2cBus = RpI2c::new_async(i2c_p, scl, sda, Irqs, I2cConfig::default());
+async fn tft_task(
+    spi: SPI0,
+    bl: PIN_4,
+    tft_miso: PIN_16,
+    tft_mosi: PIN_3,
+    tft_clk: PIN_2,
+    tft_cs: PIN_5,
+    tft_dc: PIN_1,
+) {
+    lcd::tft_task(spi, bl, tft_miso, tft_mosi, tft_clk, tft_cs, tft_dc).await
+}
 
+#[embassy_executor::task]
+async fn core1_task(
+    spi: SPI0,
+    bl: PIN_4,
+    tft_miso: PIN_16,
+    tft_mosi: PIN_3,
+    tft_clk: PIN_2,
+    tft_cs: PIN_5,
+    tft_dc: PIN_1,
+) -> ! {
     log::info!("Hello from core 1");
-    loop {
-        let chan = match CHANNEL.recv().await {
-            LedState::On => {
-                log::info!("core 1 gets ON");
-                led.set_high();
-                1
-            }
-            LedState::Off => {
-                log::info!("core 1 gets OFF");
-                led.set_low();
-                0
-            }
-        };
-    }
+    lcd::tft_task(spi, bl, tft_miso, tft_mosi, tft_clk, tft_cs, tft_dc).await
 }
-
-struct TftPin<'a, PIN: embassy_rp::gpio::Pin> {
-    pin: Output<'a, PIN>,
-}
-
-impl<'a, PIN> TftPin<'a, PIN>
-where
-    PIN: embassy_rp::gpio::Pin,
-{
-    pub fn new(pin: PIN, initial_output: Level) -> Self {
-        Self {
-            pin: Output::new(pin, initial_output),
-        }
-    }
-}
-
-impl<'a, PIN> OutputPin for TftPin<'a, PIN>
-where
-    PIN: embassy_rp::gpio::Pin,
-{
-    type Error = Infallible;
-
-    fn set_low(&mut self) -> Result<(), Self::Error> {
-        self.pin.set_low();
-        Ok(())
-    }
-
-    fn set_high(&mut self) -> Result<(), Self::Error> {
-        self.pin.set_high();
-        Ok(())
-    }
-}
-
-// type TftDc<'a> = TftPin<'a, PIN_1>;
-// type TftCs<'a> = TftPin<'a, PIN_5>;
-// type TftRst<'a> = TftPin<'a, PIN_0>;
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
     let p = embassy_rp::init(Default::default());
+
     let driver = Driver::new(p.USB, Irqs);
-    let led = Output::new(p.PIN_0, Level::Low);
-    let input = Input::new(p.PIN_1, Pull::Down);
+    let led = Output::new(p.PIN_25, Level::Low);
 
     // Init button pins
     let left_pin = Input::new(p.PIN_6, Pull::Up);
     let right_pin = Input::new(p.PIN_7, Pull::Up);
+
     // Eventually reboot to bootsel
     if left_pin.is_low() || right_pin.is_low() {
         rp2040_hal::rom_data::reset_to_usb_boot(0, 0);
     }
 
-    // let tft_miso = p.PIN_16;
-    // let tft_mosi = p.PIN_3;
-    // let tft_clk = p.PIN_2;
-    // let tft_cs = p.PIN_5;
-    // let tft_dc = p.PIN_1;
-    // let mut tft_bl = Output::new(p.PIN_4, Level::High);
-    // tft_bl.set_high();
+    // Init TFT display
+    let spi0 = p.SPI0;
+    let bl = p.PIN_4;
+    let tft_miso: PIN_16 = p.PIN_16;
+    let tft_mosi: PIN_3 = p.PIN_3;
+    let tft_clk: PIN_2 = p.PIN_2;
+    let tft_cs: PIN_5 = p.PIN_5;
+    let tft_dc: PIN_1 = p.PIN_1;
 
-    // let mut tft_delay = Delay;
-
-    // let mut config = spi::Config::default();
-    // config.frequency = 27_000_000;
-    // let spi = Spi::new_blocking(p.SPI0, tft_clk, tft_mosi, tft_miso, config);
-
-    // let di = SPIInterface::new(
-    //     spi,
-    //     TftDc::new(tft_dc, Level::Low),
-    //     TftCs::new(tft_cs, Level::Low),
-    // );
-
-    // let mut display = Builder::st7789_pico1(di)
-    //     .init::<TftRst>(&mut tft_delay, None)
-    //     .unwrap();
-    // display.clear(Rgb565::WHITE).unwrap();
-    // tft_delay.delay_ms(500);
-    // display.clear(Rgb565::BLACK).unwrap();
-
-    // let circle1 =
-    //     Circle::new(Point::new(128, 64), 64).into_styled(PrimitiveStyle::with_fill(Rgb565::RED));
-    // let circle2 = Circle::new(Point::new(64, 64), 64)
-    //     .into_styled(PrimitiveStyle::with_stroke(Rgb565::GREEN, 1));
-
-    // let blue_with_red_outline = PrimitiveStyleBuilder::new()
-    //     .fill_color(Rgb565::BLUE)
-    //     .stroke_color(Rgb565::RED)
-    //     .stroke_width(1) // > 1 is not currently supported in embedded-graphics on triangles
-    //     .build();
-    // let triangle = Triangle::new(
-    //     Point::new(40, 120),
-    //     Point::new(40, 220),
-    //     Point::new(140, 120),
-    // )
-    // .into_styled(blue_with_red_outline);
-    // let line =
-    //     Line::new(Point::new(180, 160), Point::new(239, 239))
-    //         .into_styled(PrimitiveStyle::<Rgb565>::with_stroke(Rgb565::WHITE, 10));
-    // circle1.draw(&mut display).ok();
-    // circle2.draw(&mut display).ok();
-    // triangle.draw(&mut display).ok();
-    // line.draw(&mut display).ok();
+    log::info!("set up i2c ");
+    let i2c: lasers::I2cBus =
+        RpI2c::new_async(p.I2C0, p.PIN_13, p.PIN_12, Irqs, I2cConfig::default());
 
     spawn_core1(p.CORE1, unsafe { &mut CORE1_STACK }, move || {
         let executor1 = EXECUTOR1.init(Executor::new());
         executor1.run(|spawner| {
             spawner
-                .spawn(core1_task(led, p.PIN_12, p.PIN_13, p.I2C0))
+                .spawn(core1_task(
+                    spi0, bl, tft_miso, tft_mosi, tft_clk, tft_cs, tft_dc,
+                ))
                 .unwrap();
         });
     });
@@ -287,58 +196,13 @@ fn main() -> ! {
     let executor0 = EXECUTOR0.init(Executor::new());
     executor0.run(|spawner| {
         spawner.spawn(logger_task(driver)).unwrap();
-        spawner.spawn(core0_task(input)).unwrap();
+        spawner.spawn(lasers_task(i2c)).unwrap();
+        spawner.spawn(core0_task(right_pin)).unwrap();
     });
-
-    // log::info!("starting");
-
-    // let gp0 = Input::new(p.PIN_0, Pull::None);
-    // let gp1 = Input::new(p.PIN_1, Pull::None);
-    // let gp26 = Input::new(p.PIN_26, Pull::None);
-    // let gp27 = Input::new(p.PIN_27, Pull::None);
 
     // let mut pwm_1 = Pwm::new_output_ab(p.PWM_CH1, p.PIN_2, p.PIN_3, pwm_config(0, 0));
     // let mut pwm_2 = Pwm::new_output_ab(p.PWM_CH3, p.PIN_6, p.PIN_7, pwm_config(0, 0));
 
-    // for counter in 0..10 {
-    //     log::info!("sleeping... {}", counter);
-    //     Timer::after(Duration::from_secs(1)).await;
-    // }
-
-    // loop {
-    //     let l0 = gp0.get_level();
-    //     let l1 = gp1.get_level();
-    //     let l26 = gp26.get_level();
-    //     let l27 = gp27.get_level();
-    //     log::info!(
-    //         "IN: 0:{} 1:{} 26:{} 27:{}",
-    //         level2str(l0),
-    //         level2str(l1),
-    //         level2str(l26),
-    //         level2str(l27)
-    //     );
-
-    //     let c1 = if l0 == Level::High {
-    //         if l26 == Level::High {
-    //             pwm_config(0, PWM_TOP)
-    //         } else {
-    //             pwm_config(PWM_TOP, 0)
-    //         }
-    //     } else {
-    //         pwm_config(0, 0)
-    //     };
-    //     let c2 = if l1 == Level::High {
-    //         if l26 == Level::High {
-    //             pwm_config(0, PWM_TOP)
-    //         } else {
-    //             pwm_config(PWM_TOP, 0)
-    //         }
-    //     } else {
-    //         pwm_config(0, 0)
-    //     };
-
     //     pwm_1.set_config(&c1);
     //     pwm_2.set_config(&c2);
-    //     Timer::after(Duration::from_millis(100)).await;
-    // }
 }
