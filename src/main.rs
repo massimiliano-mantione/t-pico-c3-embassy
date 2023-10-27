@@ -15,7 +15,9 @@ use embassy_rp::i2c::{
     InterruptHandler as InterruptHandlerI2c,
 };
 use embassy_rp::multicore::{spawn_core1, Stack};
-use embassy_rp::peripherals::{I2C0, PIN_0, PIN_1, PIN_12, PIN_13, PIN_25, PIN_5, USB};
+use embassy_rp::peripherals::{
+    I2C0, PIN_0, PIN_1, PIN_12, PIN_13, PIN_25, PIN_5, PIN_6, PIN_7, USB,
+};
 use embassy_rp::pwm::{Config as PwmConfig, Pwm};
 use embassy_rp::spi::{self, Spi};
 use embassy_rp::usb::{Driver, InterruptHandler as InterruptHandlerUsb};
@@ -71,7 +73,7 @@ fn pwm_config(duty_a: u16, duty_b: u16) -> PwmConfig {
     c
 }
 
-static mut CORE1_STACK: Stack<4096> = Stack::new();
+static mut CORE1_STACK: Stack<16384> = Stack::new();
 static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 static CHANNEL: Channel<CriticalSectionRawMutex, LedState, 1> = Channel::new();
@@ -82,15 +84,20 @@ enum LedState {
 }
 
 #[embassy_executor::task]
-async fn core0_task() -> ! {
+async fn core0_task(mut input: Input<'static, PIN_1>) -> ! {
     log::info!("Hello from core 0");
     loop {
-        log::info!("core 0 sends ON");
-        CHANNEL.send(LedState::On).await;
-        Timer::after(Duration::from_millis(100)).await;
-        log::info!("core 0 sends OFF");
-        CHANNEL.send(LedState::Off).await;
-        Timer::after(Duration::from_millis(400)).await;
+        input.wait_for_any_edge().await;
+        match input.get_level() {
+            Level::Low => {
+                log::info!("core 0 sends ON");
+                CHANNEL.send(LedState::On).await;
+            }
+            Level::High => {
+                log::info!("core 0 sends OFF");
+                CHANNEL.send(LedState::Off).await;
+            }
+        }
     }
 }
 
@@ -110,8 +117,14 @@ fn i2c_error_message(err: &I2cError) -> &'static str {
 
 type I2cBus = RpI2c<'static, I2C0, Async>;
 const TCA9548A_ADDR: u16 = 0x70;
-const DISTANCE_SENSOR_ADDR: u16 = 0x80 >> 1;
-const DISTANCE_SENSOR_REG: u8 = 0x5E;
+const GP2Y0E02B_ADDR: u16 = 0x40;
+const GP2Y0E02B_REG: u8 = 0x5E;
+
+// BNO055
+// BLACK  SDA
+// RED    SCL
+// WHITE  GND
+// YELLOW VCC
 
 async fn select_i2c_channel(i2c: &mut I2cBus, chan: usize) {
     if let Err(err) = i2c.write_async(TCA9548A_ADDR, [1 << chan]).await {
@@ -124,11 +137,7 @@ async fn select_i2c_channel(i2c: &mut I2cBus, chan: usize) {
 async fn read_distance(i2c: &mut I2cBus) -> u16 {
     let mut result_buf = [0u8; 2];
     match i2c
-        .write_read(
-            DISTANCE_SENSOR_ADDR,
-            &[DISTANCE_SENSOR_REG],
-            &mut result_buf,
-        )
+        .write_read(GP2Y0E02B_ADDR, &[GP2Y0E02B_REG], &mut result_buf)
         .await
     {
         Ok(_) => {
@@ -143,7 +152,7 @@ async fn read_distance(i2c: &mut I2cBus) -> u16 {
 }
 
 #[embassy_executor::task]
-async fn core1_task(mut led: Output<'static, PIN_25>, sda: PIN_12, scl: PIN_13, i2c_p: I2C0) -> ! {
+async fn core1_task(mut led: Output<'static, PIN_0>, sda: PIN_12, scl: PIN_13, i2c_p: I2C0) -> ! {
     log::info!("set up i2c ");
     let mut i2c: I2cBus = RpI2c::new_async(i2c_p, scl, sda, Irqs, I2cConfig::default());
 
@@ -161,12 +170,6 @@ async fn core1_task(mut led: Output<'static, PIN_25>, sda: PIN_12, scl: PIN_13, 
                 0
             }
         };
-        // select_i2c_channel(&mut i2c, chan).await;
-        log::info!(
-            "I2C read distance {}: {}",
-            chan,
-            read_distance(&mut i2c).await
-        );
     }
 }
 
@@ -202,66 +205,75 @@ where
     }
 }
 
-type TftDc<'a> = TftPin<'a, PIN_1>;
-type TftCs<'a> = TftPin<'a, PIN_5>;
-type TftRst<'a> = TftPin<'a, PIN_0>;
+// type TftDc<'a> = TftPin<'a, PIN_1>;
+// type TftCs<'a> = TftPin<'a, PIN_5>;
+// type TftRst<'a> = TftPin<'a, PIN_0>;
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
     let p = embassy_rp::init(Default::default());
     let driver = Driver::new(p.USB, Irqs);
-    let led = Output::new(p.PIN_25, Level::Low);
+    let led = Output::new(p.PIN_0, Level::Low);
+    let input = Input::new(p.PIN_1, Pull::Down);
 
-    let tft_miso = p.PIN_16;
-    let tft_mosi = p.PIN_3;
-    let tft_clk = p.PIN_2;
-    let tft_cs = p.PIN_5;
-    let tft_dc = p.PIN_1;
-    let mut tft_bl = Output::new(p.PIN_4, Level::High);
-    tft_bl.set_high();
+    // Init button pins
+    let left_pin = Input::new(p.PIN_6, Pull::Up);
+    let right_pin = Input::new(p.PIN_7, Pull::Up);
+    // Eventually reboot to bootsel
+    if left_pin.is_low() || right_pin.is_low() {
+        rp2040_hal::rom_data::reset_to_usb_boot(0, 0);
+    }
 
-    let mut tft_delay = Delay;
+    // let tft_miso = p.PIN_16;
+    // let tft_mosi = p.PIN_3;
+    // let tft_clk = p.PIN_2;
+    // let tft_cs = p.PIN_5;
+    // let tft_dc = p.PIN_1;
+    // let mut tft_bl = Output::new(p.PIN_4, Level::High);
+    // tft_bl.set_high();
 
-    let mut config = spi::Config::default();
-    config.frequency = 27_000_000;
-    let spi = Spi::new_blocking(p.SPI0, tft_clk, tft_mosi, tft_miso, config);
+    // let mut tft_delay = Delay;
 
-    let di = SPIInterface::new(
-        spi,
-        TftDc::new(tft_dc, Level::Low),
-        TftCs::new(tft_cs, Level::Low),
-    );
+    // let mut config = spi::Config::default();
+    // config.frequency = 27_000_000;
+    // let spi = Spi::new_blocking(p.SPI0, tft_clk, tft_mosi, tft_miso, config);
 
-    let mut display = Builder::st7789_pico1(di)
-        .init::<TftRst>(&mut tft_delay, None)
-        .unwrap();
-    display.clear(Rgb565::WHITE).unwrap();
-    tft_delay.delay_ms(500);
-    display.clear(Rgb565::BLACK).unwrap();
+    // let di = SPIInterface::new(
+    //     spi,
+    //     TftDc::new(tft_dc, Level::Low),
+    //     TftCs::new(tft_cs, Level::Low),
+    // );
 
-    let circle1 =
-        Circle::new(Point::new(128, 64), 64).into_styled(PrimitiveStyle::with_fill(Rgb565::RED));
-    let circle2 = Circle::new(Point::new(64, 64), 64)
-        .into_styled(PrimitiveStyle::with_stroke(Rgb565::GREEN, 1));
+    // let mut display = Builder::st7789_pico1(di)
+    //     .init::<TftRst>(&mut tft_delay, None)
+    //     .unwrap();
+    // display.clear(Rgb565::WHITE).unwrap();
+    // tft_delay.delay_ms(500);
+    // display.clear(Rgb565::BLACK).unwrap();
 
-    let blue_with_red_outline = PrimitiveStyleBuilder::new()
-        .fill_color(Rgb565::BLUE)
-        .stroke_color(Rgb565::RED)
-        .stroke_width(1) // > 1 is not currently supported in embedded-graphics on triangles
-        .build();
-    let triangle = Triangle::new(
-        Point::new(40, 120),
-        Point::new(40, 220),
-        Point::new(140, 120),
-    )
-    .into_styled(blue_with_red_outline);
-    let line =
-        Line::new(Point::new(180, 160), Point::new(239, 239))
-            .into_styled(PrimitiveStyle::<Rgb565>::with_stroke(Rgb565::WHITE, 10));
-    circle1.draw(&mut display).ok();
-    circle2.draw(&mut display).ok();
-    triangle.draw(&mut display).ok();
-    line.draw(&mut display).ok();
+    // let circle1 =
+    //     Circle::new(Point::new(128, 64), 64).into_styled(PrimitiveStyle::with_fill(Rgb565::RED));
+    // let circle2 = Circle::new(Point::new(64, 64), 64)
+    //     .into_styled(PrimitiveStyle::with_stroke(Rgb565::GREEN, 1));
+
+    // let blue_with_red_outline = PrimitiveStyleBuilder::new()
+    //     .fill_color(Rgb565::BLUE)
+    //     .stroke_color(Rgb565::RED)
+    //     .stroke_width(1) // > 1 is not currently supported in embedded-graphics on triangles
+    //     .build();
+    // let triangle = Triangle::new(
+    //     Point::new(40, 120),
+    //     Point::new(40, 220),
+    //     Point::new(140, 120),
+    // )
+    // .into_styled(blue_with_red_outline);
+    // let line =
+    //     Line::new(Point::new(180, 160), Point::new(239, 239))
+    //         .into_styled(PrimitiveStyle::<Rgb565>::with_stroke(Rgb565::WHITE, 10));
+    // circle1.draw(&mut display).ok();
+    // circle2.draw(&mut display).ok();
+    // triangle.draw(&mut display).ok();
+    // line.draw(&mut display).ok();
 
     spawn_core1(p.CORE1, unsafe { &mut CORE1_STACK }, move || {
         let executor1 = EXECUTOR1.init(Executor::new());
@@ -275,7 +287,7 @@ fn main() -> ! {
     let executor0 = EXECUTOR0.init(Executor::new());
     executor0.run(|spawner| {
         spawner.spawn(logger_task(driver)).unwrap();
-        spawner.spawn(core0_task()).unwrap();
+        spawner.spawn(core0_task(input)).unwrap();
     });
 
     // log::info!("starting");
