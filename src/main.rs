@@ -39,6 +39,7 @@ use mipidsi::Builder;
 use rp2040_panic_usb_boot as _;
 use static_cell::StaticCell;
 
+pub mod esp32c3;
 mod imu;
 mod lasers;
 mod lcd;
@@ -70,6 +71,11 @@ async fn lasers_task(i2c: lasers::I2cBus) {
 #[embassy_executor::task]
 async fn imu_task(uart0: UART0, pin_16: PIN_16, pin_17: PIN_17) {
     imu::imu_task(uart0, pin_16, pin_17).await
+}
+
+#[embassy_executor::task]
+async fn esp32c3_task(uart1: UART1, pin_8: PIN_8, pin_9: PIN_9) {
+    esp32c3::esp32c3_task(uart1, pin_8, pin_9).await
 }
 
 fn level2str(l: Level) -> &'static str {
@@ -221,6 +227,9 @@ fn main() -> ! {
         spawner.spawn(lasers_task(i2c)).unwrap();
         spawner
             .spawn(imu_task(p.UART0, p.PIN_16, p.PIN_17))
+            .unwrap();
+        spawner
+            .spawn(esp32c3_task(p.UART1, p.PIN_8, p.PIN_9))
             .unwrap();
         spawner.spawn(core0_task(right_pin)).unwrap();
     });

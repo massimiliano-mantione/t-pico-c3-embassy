@@ -1,12 +1,3 @@
-// pub type Bno080Uart = UartPeripheral<
-//     uart::Enabled,
-//     rp_pico::pac::UART0,
-//     (
-//         Pin<rp2040_hal::gpio::bank0::Gpio16, rp2040_hal::gpio::Function<rp2040_hal::gpio::Uart>>,
-//         Pin<rp2040_hal::gpio::bank0::Gpio17, rp2040_hal::gpio::Function<rp2040_hal::gpio::Uart>>,
-//     ),
-// >;
-
 use embassy_rp::{
     peripherals::{PIN_16, PIN_17, UART0},
     uart::{BufferedUart, Config},
