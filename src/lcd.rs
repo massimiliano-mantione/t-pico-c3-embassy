@@ -5,7 +5,7 @@ use display_interface_spi::SPIInterface;
 use embassy_rp::spi::{self, Spi};
 use embassy_rp::{
     gpio::{Level, Output},
-    peripherals::{PIN_0, PIN_1, PIN_16, PIN_2, PIN_3, PIN_4, PIN_5, SPI0},
+    peripherals::{PIN_0, PIN_1, PIN_2, PIN_3, PIN_4, PIN_5, SPI0},
 };
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;

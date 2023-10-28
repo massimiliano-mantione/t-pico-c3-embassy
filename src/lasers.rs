@@ -1,9 +1,5 @@
-use embassy_rp::i2c::{
-    AbortReason as I2cAbortReason, Async, Config as I2cConfig, Error as I2cError, I2c as RpI2c,
-};
-use embassy_rp::peripherals::{
-    I2C0, PIN_0, PIN_1, PIN_10, PIN_12, PIN_13, PIN_25, PIN_5, PIN_6, PIN_7, USB,
-};
+use embassy_rp::i2c::{AbortReason as I2cAbortReason, Async, Error as I2cError, I2c as RpI2c};
+use embassy_rp::peripherals::I2C0;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use embedded_hal_async::i2c::I2c;
@@ -33,8 +29,8 @@ fn i2c_error_message(err: &I2cError) -> &'static str {
 }
 
 async fn select_i2c_channel(i2c: &mut I2cBus, chan: usize) {
-    if let Err(_err) = i2c.write_async(TCA9548A_ADDR, [1 << chan]).await {
-        //log::error!("I2C select write error: {}", i2c_error_message(&err));
+    if let Err(err) = i2c.write_async(TCA9548A_ADDR, [1 << chan]).await {
+        log::error!("I2C select write error: {}", i2c_error_message(&err));
     }
 }
 
@@ -49,8 +45,8 @@ async fn read_distance(i2c: &mut I2cBus) -> u16 {
             let distance = (raw_distance * 10) / (1 << 6);
             distance
         }
-        Err(_err) => {
-            //log::error!("I2C read distance error: {}", i2c_error_message(&err));
+        Err(err) => {
+            log::error!("I2C read distance error: {}", i2c_error_message(&err));
             0
         }
     }

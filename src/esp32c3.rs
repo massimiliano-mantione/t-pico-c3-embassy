@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
 use core::{num::ParseIntError, str::FromStr};
 
 use crate::uformat;

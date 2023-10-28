@@ -13,6 +13,7 @@ pub enum Cmd {
 pub static CMD: Signal<CriticalSectionRawMutex, Cmd> = Signal::new();
 
 impl Cmd {
+    #[allow(unused)]
     pub fn from_serial_char(code: char) -> Option<Self> {
         match code {
             'Z' | 'z' => Some(Self::Ok),
@@ -25,6 +26,7 @@ impl Cmd {
         }
     }
 
+    #[allow(unused)]
     pub fn serial_char(&self) -> char {
         match self {
             Cmd::Ok => 'K',

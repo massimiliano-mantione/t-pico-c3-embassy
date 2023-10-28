@@ -1,10 +1,9 @@
 use embassy_rp::{
     peripherals::{PIN_27, PIN_28, PIN_29, PWM_CH5, PWM_CH6},
-    pwm::{Config, Pwm, PwmPinA, PwmPinB},
+    pwm::{Config, Pwm},
 };
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
-use embassy_time::{Delay, Duration, Instant, Timer};
-use embedded_io_async::Read;
+use embassy_time::{Duration, Timer};
 use fixed::traits::ToFixed;
 
 const MOTOR_DIV_INT: u8 = 250;
@@ -17,7 +16,6 @@ const SERVO_CENTER_DUTY: u16 = 700;
 const SERVO_MAX_DELTA_DUTY: u16 = 350;
 const SERVO_MAX_DUTY: u16 = SERVO_CENTER_DUTY + SERVO_MAX_DELTA_DUTY;
 const SERVO_MIN_DUTY: u16 = SERVO_CENTER_DUTY - SERVO_MAX_DELTA_DUTY;
-const SERVO_ANGLE_MAX: f32 = 30.0;
 
 fn pwm_config_motor(power: i16) -> Config {
     let (duty_a, duty_b) = if power > 0 {
@@ -48,10 +46,10 @@ fn pwm_config_servo(steer: i16) -> Config {
     c.invert_b = false;
     c.phase_correct = false;
     c.enable = true;
-    c.divider = MOTOR_DIV_INT.to_fixed();
+    c.divider = SERVO_DIV_INT.to_fixed();
     c.compare_a = 0;
     c.compare_b = duty_b;
-    c.top = MOTOR_TOP;
+    c.top = SERVO_TOP;
     c
 }
 
