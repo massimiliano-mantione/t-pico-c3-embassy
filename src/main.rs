@@ -4,38 +4,19 @@
 #![feature(async_fn_in_trait)]
 #![allow(incomplete_features)]
 
-use core::convert::Infallible;
 use core::str;
-use display_interface_spi::SPIInterface;
-use embassy_executor::{Executor, Spawner};
+use embassy_executor::Executor;
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Input, Level, Output, Pull};
-use embassy_rp::i2c::{
-    AbortReason as I2cAbortReason, Async, Config as I2cConfig, Error as I2cError, I2c as RpI2c,
-    InterruptHandler as InterruptHandlerI2c,
-};
+use embassy_rp::i2c::{Config as I2cConfig, I2c as RpI2c, InterruptHandler as InterruptHandlerI2c};
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{
-    I2C0, PIN_0, PIN_1, PIN_10, PIN_12, PIN_13, PIN_16, PIN_17, PIN_2, PIN_25, PIN_3, PIN_4, PIN_5,
-    PIN_6, PIN_7, PIN_8, PIN_9, SPI0, UART0, UART1, USB,
+    I2C0, PIN_0, PIN_1, PIN_10, PIN_12, PIN_13, PIN_16, PIN_17, PIN_2, PIN_25, PIN_26, PIN_27,
+    PIN_28, PIN_29, PIN_3, PIN_4, PIN_5, PIN_6, PIN_7, PIN_8, PIN_9, PWM_CH5, PWM_CH6, SPI0, UART0,
+    UART1, USB,
 };
-use embassy_rp::pwm::{Config as PwmConfig, Pwm};
-use embassy_rp::spi::{self, Spi};
 use embassy_rp::uart::BufferedInterruptHandler;
 use embassy_rp::usb::{Driver, InterruptHandler as InterruptHandlerUsb};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Channel;
-use embassy_time::{Delay, Duration, Timer};
-use embedded_graphics::prelude::*;
-use embedded_graphics::primitives::*;
-use embedded_graphics_core::pixelcolor::Rgb565;
-use embedded_graphics_core::pixelcolor::RgbColor;
-use embedded_graphics_core::prelude::DrawTarget;
-use embedded_hal_0::digital::v2::OutputPin;
-use embedded_hal_1::delay::DelayUs;
-use embedded_hal_async::i2c::I2c;
-use fixed::traits::ToFixed;
-use mipidsi::Builder;
 use rp2040_panic_usb_boot as _;
 use static_cell::StaticCell;
 
@@ -43,13 +24,8 @@ pub mod esp32c3;
 mod imu;
 mod lasers;
 mod lcd;
+mod motors;
 mod uformat;
-
-//const WIFI_SSID: &'static str = include_str!("WIFI_SSID.txt");
-//const WIFI_SECRET: &'static str = include_str!("WIFI_SECRET.txt");
-
-const PWN_DIV_INT: u8 = 5;
-const PWM_TOP: u16 = 1000;
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandlerUsb<USB>;
@@ -78,34 +54,20 @@ async fn esp32c3_task(uart1: UART1, pin_8: PIN_8, pin_9: PIN_9) {
     esp32c3::esp32c3_task(uart1, pin_8, pin_9).await
 }
 
-fn level2str(l: Level) -> &'static str {
-    match l {
-        Level::Low => "LO",
-        Level::High => "HI",
-    }
-}
-
-fn pwm_config(duty_a: u16, duty_b: u16) -> PwmConfig {
-    let mut c = PwmConfig::default();
-    c.invert_a = false;
-    c.invert_b = false;
-    c.phase_correct = false;
-    c.enable = true;
-    c.divider = PWN_DIV_INT.to_fixed();
-    c.compare_a = duty_a;
-    c.compare_b = duty_b;
-    c.top = PWM_TOP;
-    c
+#[embassy_executor::task]
+async fn motors_task(
+    pwm_ch6: PWM_CH6,
+    pwm_ch5: PWM_CH5,
+    pin27: PIN_27,
+    pin28: PIN_28,
+    pin29: PIN_29,
+) {
+    motors::motors_task(pwm_ch6, pwm_ch5, pin27, pin28, pin29).await
 }
 
 static mut CORE1_STACK: Stack<16384> = Stack::new();
 static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
-
-enum LedState {
-    On,
-    Off,
-}
 
 #[embassy_executor::task]
 async fn core0_task(mut input: Input<'static, PIN_7>) -> ! {
@@ -228,8 +190,13 @@ fn main() -> ! {
         spawner
             .spawn(imu_task(p.UART0, p.PIN_16, p.PIN_17))
             .unwrap();
+        // spawner
+        //     .spawn(esp32c3_task(p.UART1, p.PIN_8, p.PIN_9))
+        //     .unwrap();
         spawner
-            .spawn(esp32c3_task(p.UART1, p.PIN_8, p.PIN_9))
+            .spawn(motors_task(
+                p.PWM_CH6, p.PWM_CH5, p.PIN_27, p.PIN_28, p.PIN_29,
+            ))
             .unwrap();
         spawner.spawn(core0_task(right_pin)).unwrap();
     });

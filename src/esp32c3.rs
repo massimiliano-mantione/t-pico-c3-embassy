@@ -400,7 +400,7 @@ impl RequiredNetworkStatus {
     }
 }
 
-const SECS_1: Duration = Duration::from_secs(1);
+const SECS_4: Duration = Duration::from_secs(4);
 const SECS_5: Duration = Duration::from_secs(5);
 const SECS_10: Duration = Duration::from_secs(10);
 const NTW_INIT: RequiredNetworkStatus = RequiredNetworkStatus::Initial;
@@ -409,34 +409,34 @@ const NTW_SCAN: RequiredNetworkStatus = RequiredNetworkStatus::NeedsRescan;
 impl AtCommand {
     pub fn timeout(&self) -> (Duration, RequiredNetworkStatus) {
         match self {
-            AtCommand::At => (SECS_1, NTW_INIT),
-            AtCommand::AtRst => (SECS_1, NTW_INIT),
-            AtCommand::AtRfPower => (SECS_1, NTW_INIT),
-            AtCommand::AtCwInit => (SECS_1, NTW_INIT),
-            AtCommand::AtCwMode(_) => (SECS_1, NTW_INIT),
-            AtCommand::AtCIpRecvMode(_) => (SECS_1, NTW_INIT),
+            AtCommand::At => (SECS_4, NTW_INIT),
+            AtCommand::AtRst => (SECS_4, NTW_INIT),
+            AtCommand::AtRfPower => (SECS_4, NTW_INIT),
+            AtCommand::AtCwInit => (SECS_4, NTW_INIT),
+            AtCommand::AtCwMode(_) => (SECS_4, NTW_INIT),
+            AtCommand::AtCIpRecvMode(_) => (SECS_4, NTW_INIT),
             AtCommand::AtCwJap { .. } => (SECS_10, NTW_SCAN),
-            AtCommand::ATCwReConnCfg { .. } => (SECS_1, NTW_INIT),
+            AtCommand::ATCwReConnCfg { .. } => (SECS_4, NTW_INIT),
             AtCommand::AtCwLap => (SECS_10, NTW_SCAN),
-            AtCommand::AtCwAutoConn(_) => (SECS_1, NTW_INIT),
-            AtCommand::AtCwState => (SECS_1, NTW_INIT),
-            AtCommand::AtCwHostname(_) => (SECS_1, NTW_INIT),
-            AtCommand::AtCIpState => (SECS_1, NTW_INIT),
+            AtCommand::AtCwAutoConn(_) => (SECS_4, NTW_INIT),
+            AtCommand::AtCwState => (SECS_4, NTW_INIT),
+            AtCommand::AtCwHostname(_) => (SECS_4, NTW_INIT),
+            AtCommand::AtCIpState => (SECS_4, NTW_INIT),
             AtCommand::AtCIpSend { .. } => (SECS_5, NTW_INIT),
-            AtCommand::AtCIFSR => (SECS_1, NTW_INIT),
-            AtCommand::AtCIpMux(_) => (SECS_1, NTW_INIT),
-            AtCommand::AtCIpServCreate(_) => (SECS_1, NTW_INIT),
-            AtCommand::AtCIpServShutdown(_) => (SECS_1, NTW_INIT),
-            AtCommand::AtCIpServMaxConn(_) => (SECS_1, NTW_INIT),
-            AtCommand::AtCIpServTimeout(_) => (SECS_1, NTW_INIT),
-            AtCommand::AtCIpDInfo(_) => (SECS_1, NTW_INIT),
-            AtCommand::ATCIpTcpOpt { .. } => (SECS_1, NTW_INIT),
+            AtCommand::AtCIFSR => (SECS_4, NTW_INIT),
+            AtCommand::AtCIpMux(_) => (SECS_4, NTW_INIT),
+            AtCommand::AtCIpServCreate(_) => (SECS_4, NTW_INIT),
+            AtCommand::AtCIpServShutdown(_) => (SECS_4, NTW_INIT),
+            AtCommand::AtCIpServMaxConn(_) => (SECS_4, NTW_INIT),
+            AtCommand::AtCIpServTimeout(_) => (SECS_4, NTW_INIT),
+            AtCommand::AtCIpDInfo(_) => (SECS_4, NTW_INIT),
+            AtCommand::ATCIpTcpOpt { .. } => (SECS_4, NTW_INIT),
         }
     }
 
     pub fn build(&self) -> ArrayString<MAX_NETWORK_BUFFER_SIZE> {
         match self {
-            AtCommand::At => uformat!("AT\n").into(),
+            AtCommand::At => uformat!("ATE0\n").into(),
             AtCommand::AtRst => uformat!("AT+RST\n").into(),
             AtCommand::AtRfPower => uformat!("AT+RFPOWER=84\n").into(),
             AtCommand::AtCwInit => uformat!("AT+CWINIT=1\n").into(),
@@ -543,6 +543,40 @@ pub enum NetworkStatus {
     NeedsRescan,
     NeedsStateCheck,
     Resetting,
+}
+
+impl NetworkStatus {
+    pub fn description(&self) -> &'static str {
+        match self {
+            NetworkStatus::Initial => "INITIAL",
+            NetworkStatus::Checking => "CHECKING",
+            NetworkStatus::SettingPower => "SETTING-POWER",
+            NetworkStatus::Initializing => "INITIALIZING",
+            NetworkStatus::SettingMode => "SETTING-MODE",
+            NetworkStatus::SettingRecvMode => "SETTING-RECV-MODE",
+            NetworkStatus::SettingReconnection => "SETTING-RECONNECTION",
+            NetworkStatus::SettingAutoconnect => "SETTING-AUTOCONNECT",
+            NetworkStatus::CheckingState => "CHECKING-STATE",
+            NetworkStatus::WaitingReconnection => "WAITING-CONNECTION",
+            NetworkStatus::ListingAp => "LISTING-AP",
+            NetworkStatus::JoiningAp { connected, has_ip } => "JOINING-AP",
+            NetworkStatus::GettingIpAddress => "GETTING-IP-ADDRESS",
+            NetworkStatus::SettingHostName => "SETTING-HOST-NAME",
+            NetworkStatus::SettingMux => "SETTING-MUX",
+            NetworkStatus::CreatingServer => "CREATING-SERVER",
+            NetworkStatus::SettingServerMaxConn => "SETTING-SERVER-MAX-CONN",
+            NetworkStatus::SettingConnectionVerbosity { link_id } => "SETTING-CONNECTION-VERBOSITY",
+            NetworkStatus::SettingConnectionIpOptions { link_id } => {
+                "SETTING-CONNECTION-IP-OPTIONS"
+            }
+            NetworkStatus::SendingData { link_id, data } => "SENDING-DATA",
+            NetworkStatus::Ready => "READY",
+            NetworkStatus::NeedsReset => "NEEDS-RESET",
+            NetworkStatus::NeedsRescan => "NEEDS-RESCAN",
+            NetworkStatus::NeedsStateCheck => "NEEDS-STATE-CHECK",
+            NetworkStatus::Resetting => "RESETTING",
+        }
+    }
 }
 
 const WIFI_SSID1: &'static str = include_str!("WIFI_SSID1.txt");
@@ -714,7 +748,11 @@ impl Esp32C3 {
                     self.last_received = Some(self.current_data.clone());
                 }
                 let reply = AtReply::parse(self.current_reply.as_str(), &self.current_data);
-                log::info!("REPLY RECEIVED: {}", reply.description());
+                log::info!(
+                    "REPLY RECEIVED: {} (STATUS {})",
+                    reply.description(),
+                    self.status.description()
+                );
                 self.current_reply.clear();
                 let command = self.handle_reply(&reply);
                 if let Some(cmd) = command {
@@ -825,7 +863,10 @@ impl Esp32C3 {
 
     fn handle_reply(&mut self, reply: &AtReply) -> Option<AtCommand> {
         match reply {
-            AtReply::Empty => None,
+            AtReply::Empty => match &self.status {
+                NetworkStatus::Checking => self.reset(),
+                _ => None,
+            },
             AtReply::Ok => match &self.status {
                 NetworkStatus::Initial => None,
                 NetworkStatus::Checking => {
