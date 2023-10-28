@@ -4,23 +4,24 @@
 #![feature(async_fn_in_trait)]
 #![allow(incomplete_features)]
 
-use core::str;
+use buttons::{LeftButton, RightButton};
 use embassy_executor::Executor;
 use embassy_rp::bind_interrupts;
-use embassy_rp::gpio::{Input, Level, Output, Pull};
+use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::i2c::{Config as I2cConfig, I2c as RpI2c, InterruptHandler as InterruptHandlerI2c};
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{
-    I2C0, PIN_0, PIN_1, PIN_10, PIN_12, PIN_13, PIN_16, PIN_17, PIN_2, PIN_25, PIN_26, PIN_27,
-    PIN_28, PIN_29, PIN_3, PIN_4, PIN_5, PIN_6, PIN_7, PIN_8, PIN_9, PWM_CH5, PWM_CH6, SPI0, UART0,
-    UART1, USB,
+    I2C0, PIN_0, PIN_1, PIN_16, PIN_17, PIN_2, PIN_27, PIN_28, PIN_29, PIN_3, PIN_4, PIN_5, PIN_8,
+    PIN_9, PWM_CH5, PWM_CH6, SPI0, UART0, UART1, USB,
 };
 use embassy_rp::uart::BufferedInterruptHandler;
 use embassy_rp::usb::{Driver, InterruptHandler as InterruptHandlerUsb};
 use rp2040_panic_usb_boot as _;
 use static_cell::StaticCell;
 
-pub mod esp32c3;
+mod buttons;
+mod cmd;
+mod esp32c3;
 mod imu;
 mod lasers;
 mod lcd;
@@ -65,15 +66,21 @@ async fn motors_task(
     motors::motors_task(pwm_ch6, pwm_ch5, pin27, pin28, pin29).await
 }
 
+#[embassy_executor::task]
+async fn buttons_task(left_button: LeftButton, right_button: RightButton) {
+    buttons::buttons_task(left_button, right_button).await
+}
+
 static mut CORE1_STACK: Stack<16384> = Stack::new();
 static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 
 #[embassy_executor::task]
-async fn core0_task(mut input: Input<'static, PIN_7>) -> ! {
+async fn core0_task() -> ! {
     log::info!("Hello from core 0");
     loop {
-        input.wait_for_any_edge().await;
+        let c = cmd::CMD.wait().await;
+        log::info!("cmd: {}", c.name());
 
         if lasers::RAW_LASER_READINGS.signaled() {
             let l = lasers::RAW_LASER_READINGS.wait().await;
@@ -103,15 +110,6 @@ async fn core0_task(mut input: Input<'static, PIN_7>) -> ! {
                 data.side,
                 data.vertical
             );
-        }
-
-        match input.get_level() {
-            Level::Low => {
-                log::info!("button 0 ON");
-            }
-            Level::High => {
-                log::info!("button 0 OFF");
-            }
         }
     }
 }
@@ -146,18 +144,18 @@ async fn core1_task(
 #[cortex_m_rt::entry]
 fn main() -> ! {
     let p = embassy_rp::init(Default::default());
-
-    let driver = Driver::new(p.USB, Irqs);
-    let led = Output::new(p.PIN_25, Level::Low);
+    // let led = Output::new(p.PIN_25, Level::Low);
 
     // Init button pins
-    let left_pin = Input::new(p.PIN_6, Pull::Up);
-    let right_pin = Input::new(p.PIN_7, Pull::Up);
+    let left_button = Input::new(p.PIN_6, Pull::Up);
+    let right_button = Input::new(p.PIN_7, Pull::Up);
 
     // Eventually reboot to bootsel
-    if left_pin.is_low() || right_pin.is_low() {
+    if left_button.is_low() || right_button.is_low() {
         rp2040_hal::rom_data::reset_to_usb_boot(0, 0);
     }
+
+    let driver = Driver::new(p.USB, Irqs);
 
     // Init TFT display
     let spi0 = p.SPI0;
@@ -198,12 +196,9 @@ fn main() -> ! {
                 p.PWM_CH6, p.PWM_CH5, p.PIN_27, p.PIN_28, p.PIN_29,
             ))
             .unwrap();
-        spawner.spawn(core0_task(right_pin)).unwrap();
+        spawner
+            .spawn(buttons_task(left_button, right_button))
+            .unwrap();
+        spawner.spawn(core0_task()).unwrap();
     });
-
-    // let mut pwm_1 = Pwm::new_output_ab(p.PWM_CH1, p.PIN_2, p.PIN_3, pwm_config(0, 0));
-    // let mut pwm_2 = Pwm::new_output_ab(p.PWM_CH3, p.PIN_6, p.PIN_7, pwm_config(0, 0));
-
-    //     pwm_1.set_config(&c1);
-    //     pwm_2.set_config(&c2);
 }
