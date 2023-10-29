@@ -96,16 +96,18 @@ async fn core0_task() -> ! {
         match c {
             cmd::Cmd::Previous => steer -= 1,
             cmd::Cmd::Next => steer += 1,
-            cmd::Cmd::Plus => power += 100,
-            cmd::Cmd::Minus => power -= 100,
+            cmd::Cmd::Plus => power += 1000,
+            cmd::Cmd::Minus => power -= 1000,
             _ => {}
         }
 
         ui.values_h[0].text("TEST");
         ui.values_h[1].text("TEST");
-        ui.values_h[2].value(steer);
+        ui.values_h[2].steer(steer);
         ui.values_h[3].text("TEST");
         ui.values_h[4].power(power);
+
+        motors::MOTORS_DATA.signal(motors::MotorsData { power, steer });
 
         if lasers::RAW_LASER_READINGS.signaled() {
             let l = lasers::RAW_LASER_READINGS.wait().await;

@@ -25,6 +25,9 @@ fn pwm_config_motor(power: i16) -> Config {
     } else {
         (0, 0)
     };
+
+    log::info!("MOTOR A {} B {}", duty_a, duty_b);
+
     let mut c = Config::default();
     c.invert_a = false;
     c.invert_b = false;
@@ -38,9 +41,12 @@ fn pwm_config_motor(power: i16) -> Config {
 }
 
 fn pwm_config_servo(steer: i16) -> Config {
-    let duty_b = ((steer + (SERVO_CENTER_DUTY as i16)) as u16)
+    let duty_b = (((-steer * 10) + (SERVO_CENTER_DUTY as i16)) as u16)
         .min(SERVO_MAX_DUTY)
         .max(SERVO_MIN_DUTY);
+
+    log::info!("SERVO B {}", duty_b);
+
     let mut c = Config::default();
     c.invert_a = false;
     c.invert_b = false;
