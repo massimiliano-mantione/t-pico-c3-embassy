@@ -27,6 +27,7 @@ mod lasers;
 mod lcd;
 mod motors;
 mod uformat;
+mod vision;
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandlerUsb<USB>;
@@ -75,15 +76,42 @@ static mut CORE1_STACK: Stack<16384> = Stack::new();
 static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 
+use vision::Vision;
+
 #[embassy_executor::task]
 async fn core0_task() -> ! {
     log::info!("Hello from core 0");
+
+    let mut ui = lcd::VisualState::init();
+    let mut v = Vision::new();
+    let config = vision::RaceConfig::init();
+
+    let mut steer = 0i16;
+    let mut power = 0i16;
+
     loop {
         let c = cmd::CMD.wait().await;
         log::info!("cmd: {}", c.name());
 
+        match c {
+            cmd::Cmd::Previous => steer -= 1,
+            cmd::Cmd::Next => steer += 1,
+            cmd::Cmd::Plus => power += 100,
+            cmd::Cmd::Minus => power -= 100,
+            _ => {}
+        }
+
+        ui.values_h[0].text("TEST");
+        ui.values_h[1].text("TEST");
+        ui.values_h[2].value(steer);
+        ui.values_h[3].text("TEST");
+        ui.values_h[4].power(power);
+
         if lasers::RAW_LASER_READINGS.signaled() {
             let l = lasers::RAW_LASER_READINGS.wait().await;
+            v.update(&l, &config);
+            ui.update_vision(&v);
+
             log::info!(
                 "L {} {} {} {} {} {} {} {}",
                 l[0],
@@ -96,7 +124,7 @@ async fn core0_task() -> ! {
                 l[7]
             );
             log::info!("core 0 sends value");
-            lcd::VISUAL_STATE.signal(lcd::VisualState { value: l[0] });
+            lcd::VISUAL_STATE.signal(ui);
         }
 
         if imu::IMU_DATA.signaled() {

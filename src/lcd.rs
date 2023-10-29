@@ -1,5 +1,6 @@
 use crate::uformat;
 use crate::uformat::FormattedText;
+use crate::vision::{LaserData, LaserStatus, Vision, LASER_OVERFLOW};
 use core::convert::Infallible;
 use display_interface_spi::SPIInterface;
 use embassy_rp::spi::{self, Spi};
@@ -10,22 +11,302 @@ use embassy_rp::{
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use embassy_time::Delay;
-use embedded_graphics::mono_font::ascii::FONT_9X18_BOLD;
+use embedded_graphics::mono_font::iso_8859_9::FONT_10X20;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::primitives::{
-    Circle, Line, Primitive, PrimitiveStyle, PrimitiveStyleBuilder, Triangle,
+    Line, Primitive, PrimitiveStyle, PrimitiveStyleBuilder, StyledDrawable,
 };
 use embedded_graphics::text::Text;
 use embedded_graphics_core::pixelcolor::Rgb565;
-use embedded_graphics_core::prelude::{DrawTarget, Point, RgbColor};
+use embedded_graphics_core::prelude::{DrawTarget, Point, RgbColor, Size, WebColors};
+use embedded_graphics_core::primitives::Rectangle;
 use embedded_graphics_core::Drawable;
+use embedded_graphics_framebuf::FrameBuf;
 use embedded_hal_0::digital::v2::OutputPin;
 use mipidsi::Builder;
 
-#[derive(Clone, Copy)]
-pub struct VisualState {
-    pub value: u16,
+pub const STATES_COUNT: usize = 5;
+
+const VISUAL_STATE_H_HEIGHT: i32 = 240 / 10;
+const VISUAL_STATE_H_WIDTH: i32 = 135;
+const VISUAL_STATE_H_SIZE: usize =
+    (VISUAL_STATE_H_HEIGHT as usize) * (VISUAL_STATE_H_WIDTH as usize);
+pub type VisualStateHBuf = [Rgb565; VISUAL_STATE_H_SIZE];
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum VisualStateH {
+    Text { text: &'static str, color: Rgb565 },
+    Value { value: i16, color: Rgb565 },
+    Gauge { value: i16, max: i16, color: Rgb565 },
+    Bar { value: i16, max: i16, color: Rgb565 },
 }
+
+impl VisualStateH {
+    pub fn text(&mut self, text: &'static str) {
+        *self = Self::Text {
+            text,
+            color: Rgb565::WHITE,
+        }
+    }
+
+    pub fn text_red(&mut self, text: &'static str) {
+        *self = Self::Text {
+            text,
+            color: Rgb565::RED,
+        }
+    }
+
+    pub fn text_green(&mut self, text: &'static str) {
+        *self = Self::Text {
+            text,
+            color: Rgb565::GREEN,
+        }
+    }
+
+    pub fn value(&mut self, value: i16) {
+        *self = Self::Value {
+            value,
+            color: Rgb565::WHITE,
+        }
+    }
+
+    pub fn steer(&mut self, angle: i16) {
+        *self = Self::Gauge {
+            value: angle,
+            max: 35,
+            color: Rgb565::WHITE,
+        }
+    }
+
+    pub fn power(&mut self, power: i16) {
+        *self = Self::Value {
+            value: power,
+            color: if power > 0 {
+                Rgb565::GREEN
+            } else if power < 0 {
+                Rgb565::RED
+            } else {
+                Rgb565::BLUE
+            },
+        }
+    }
+
+    pub fn position(index: usize) -> Point {
+        Point {
+            x: 0,
+            y: VISUAL_STATE_H_HEIGHT * (index as i32),
+        }
+    }
+
+    pub fn draw(&self, index: usize, target: &mut impl DrawTarget<Color = Rgb565>) {
+        target
+            .fill_solid(
+                &Rectangle::new(
+                    Self::position(index),
+                    Size::new(VISUAL_STATE_H_WIDTH as u32, VISUAL_STATE_H_HEIGHT as u32),
+                ),
+                Rgb565::BLACK,
+            )
+            .ok();
+
+        match *self {
+            VisualStateH::Text { text, color } => {
+                let style = MonoTextStyle::new(&FONT_10X20, color);
+                Text::new(text, Point { x: 2, y: 2 }, style)
+                    .draw(target)
+                    .ok();
+            }
+            VisualStateH::Value { value, color } => {
+                let text = uformat!("{}", value);
+                let style = MonoTextStyle::new(&FONT_10X20, color);
+                Text::new(
+                    text.as_str(),
+                    Self::position(index) + Point { x: 2, y: 2 },
+                    style,
+                )
+                .draw(target)
+                .ok();
+            }
+            VisualStateH::Gauge { value, max, color } => {
+                let center = VISUAL_STATE_H_WIDTH / 2;
+                let delta = (value as i32) * (center - 1) / (max as i32);
+                Line::new(
+                    Self::position(index) + Point::new(center + delta, 1),
+                    Self::position(index) + Point::new(center + delta, VISUAL_STATE_H_HEIGHT - 1),
+                )
+                .into_styled(PrimitiveStyle::<Rgb565>::with_stroke(color, 3))
+                .draw(target)
+                .ok();
+            }
+            VisualStateH::Bar { value, max, color } => {
+                let height = (VISUAL_STATE_H_HEIGHT - 2) as u32;
+                let rectangle = if value > 0 {
+                    let width = (value as u32) * (max as u32) / ((VISUAL_STATE_H_WIDTH - 2) as u32);
+                    Rectangle::new(Point::new(1, 1), Size::new(width, height))
+                } else if value < 0 {
+                    let width =
+                        ((-value) as u32) * (max as u32) / ((VISUAL_STATE_H_WIDTH - 2) as u32);
+                    Rectangle::new(
+                        Self::position(index)
+                            + Point::new(VISUAL_STATE_H_WIDTH - (width as i32 + 1), 1),
+                        Size::new(width, height),
+                    )
+                } else {
+                    let hp = (VISUAL_STATE_H_HEIGHT - 1) / 2;
+                    Rectangle::new(
+                        Point::new(1, hp),
+                        Size::new((VISUAL_STATE_H_WIDTH - 2) as u32, 2),
+                    )
+                };
+                let style = PrimitiveStyleBuilder::new()
+                    .fill_color(color)
+                    .stroke_color(Rgb565::CSS_SLATE_GRAY)
+                    .stroke_width(1) // > 1 is not currently supported in embedded-graphics on triangles
+                    .build();
+                rectangle.draw_styled(&style, target).ok();
+            }
+        }
+    }
+}
+
+const VISUAL_STATE_V_HEIGHT: i32 = 240 / 2;
+const VISUAL_STATE_V_WIDTH: i32 = 135 / 5;
+const VISUAL_STATE_V_SIZE: usize =
+    (VISUAL_STATE_V_HEIGHT as usize) * (VISUAL_STATE_V_WIDTH as usize);
+pub type VisualStateVBuf = [Rgb565; VISUAL_STATE_V_SIZE];
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum VisualStateV {
+    Gauge {
+        value: i16,
+        max: i16,
+        color: Rgb565,
+    },
+    Bar {
+        value: u16,
+        max: u16,
+        mark: u16,
+        color: Rgb565,
+        mark_color: Rgb565,
+    },
+}
+
+impl VisualStateV {
+    pub fn laser(&mut self, data: &LaserData) {
+        let color = if data.slope {
+            Rgb565::GREEN
+        } else {
+            match data.status {
+                LaserStatus::Back => Rgb565::RED,
+                LaserStatus::Alert => Rgb565::YELLOW,
+                LaserStatus::Regular => Rgb565::BLUE,
+                LaserStatus::Overflow => Rgb565::GREEN,
+            }
+        };
+        *self = Self::Bar {
+            value: data.lower.min(LASER_OVERFLOW),
+            max: LASER_OVERFLOW,
+            mark: data.upper.min(LASER_OVERFLOW),
+            color,
+            mark_color: Rgb565::WHITE,
+        }
+    }
+
+    pub fn position(index: usize) -> Point {
+        Point {
+            x: VISUAL_STATE_V_WIDTH * (index as i32),
+            y: VISUAL_STATE_V_HEIGHT,
+        }
+    }
+
+    pub fn draw(&self, index: usize, target: &mut impl DrawTarget<Color = Rgb565>) {
+        target
+            .fill_solid(
+                &Rectangle::new(
+                    Self::position(index),
+                    Size::new(VISUAL_STATE_V_WIDTH as u32, VISUAL_STATE_V_HEIGHT as u32),
+                ),
+                Rgb565::BLACK,
+            )
+            .ok();
+
+        match *self {
+            VisualStateV::Gauge { value, max, color } => {
+                let width = VISUAL_STATE_V_WIDTH - 2;
+                let center = VISUAL_STATE_V_HEIGHT / 2;
+                let delta = (value as i32) * (center - 1) / (max as i32);
+                Line::new(
+                    Self::position(index) + Point::new(1, center - delta),
+                    Self::position(index) + Point::new(width + 1, center - delta),
+                )
+                .into_styled(PrimitiveStyle::<Rgb565>::with_stroke(color, 3))
+                .draw(target)
+                .ok();
+            }
+            VisualStateV::Bar {
+                value,
+                max,
+                mark,
+                color,
+                mark_color,
+            } => {
+                let width = VISUAL_STATE_V_WIDTH as u32 - 2;
+                let height = (value as u32) * ((VISUAL_STATE_V_HEIGHT - 2) as u32) / (max as u32);
+                let rectangle = Rectangle::new(
+                    Self::position(index)
+                        + Point::new(1, VISUAL_STATE_V_HEIGHT - (height as i32 + 1)),
+                    Size::new(width, height),
+                );
+
+                let style = PrimitiveStyleBuilder::new()
+                    .fill_color(color)
+                    .stroke_color(Rgb565::CSS_SLATE_GRAY)
+                    .stroke_width(1) // > 1 is not currently supported in embedded-graphics on triangles
+                    .build();
+                rectangle.draw_styled(&style, target).ok();
+                let mark_value =
+                    (mark as i32) * ((VISUAL_STATE_V_HEIGHT - 2) as i32) / (max as i32);
+                let mark_height = VISUAL_STATE_V_HEIGHT - (mark_value + 1);
+                Line::new(
+                    Self::position(index) + Point::new(1, mark_height),
+                    Self::position(index) + Point::new(width as i32 + 1, mark_height),
+                )
+                .into_styled(PrimitiveStyle::<Rgb565>::with_stroke(mark_color, 3))
+                .draw(target)
+                .ok();
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct VisualState {
+    pub values_h: [VisualStateH; STATES_COUNT],
+    pub values_v: [VisualStateV; STATES_COUNT],
+}
+
+impl VisualState {
+    pub fn init() -> Self {
+        Self {
+            values_h: [VisualStateH::Text {
+                text: "",
+                color: Rgb565::BLACK,
+            }; STATES_COUNT],
+            values_v: [VisualStateV::Gauge {
+                value: 0,
+                max: 1,
+                color: Rgb565::BLACK,
+            }; STATES_COUNT],
+        }
+    }
+
+    pub fn update_vision(&mut self, v: &Vision) {
+        for (i, vv) in self.values_v.iter_mut().enumerate() {
+            vv.laser(&v.lasers[i]);
+        }
+    }
+}
+
 pub static VISUAL_STATE: Signal<CriticalSectionRawMutex, VisualState> = Signal::new();
 
 struct TftPin<'a, PIN: embassy_rp::gpio::Pin> {
@@ -87,47 +368,25 @@ pub async fn tft_task(
     let mut display = Builder::st7789_pico1(di)
         .init::<TftRst>(&mut tft_delay, None)
         .unwrap();
-    display.clear(Rgb565::WHITE).unwrap();
     display.clear(Rgb565::BLACK).unwrap();
 
-    let circle1 =
-        Circle::new(Point::new(128, 64), 64).into_styled(PrimitiveStyle::with_fill(Rgb565::RED));
-    let circle2 = Circle::new(Point::new(64, 64), 64)
-        .into_styled(PrimitiveStyle::with_stroke(Rgb565::GREEN, 1));
-
-    let blue_with_red_outline = PrimitiveStyleBuilder::new()
-        .fill_color(Rgb565::BLUE)
-        .stroke_color(Rgb565::RED)
-        .stroke_width(1) // > 1 is not currently supported in embedded-graphics on triangles
-        .build();
-    let triangle = Triangle::new(
-        Point::new(40, 120),
-        Point::new(40, 220),
-        Point::new(140, 120),
-    )
-    .into_styled(blue_with_red_outline);
-    let line =
-        Line::new(Point::new(180, 160), Point::new(239, 239))
-            .into_styled(PrimitiveStyle::<Rgb565>::with_stroke(Rgb565::WHITE, 10));
-    circle1.draw(&mut display).ok();
-    circle2.draw(&mut display).ok();
-    triangle.draw(&mut display).ok();
-    line.draw(&mut display).ok();
+    let mut current_state = VisualState::init();
 
     loop {
-        let s = VISUAL_STATE.wait().await;
-        log::info!("value: {}", s.value);
-        let t = uformat!("V: {}", s.value);
-        let style = MonoTextStyle::new(&FONT_9X18_BOLD, Rgb565::WHITE);
-        Text::new(
-            t.as_str(),
-            Point {
-                x: 35 / 2,
-                y: 240 / 2,
-            },
-            style,
-        )
-        .draw(&mut display)
-        .ok();
+        let new_state = VISUAL_STATE.wait().await;
+
+        for (i, s) in new_state.values_h.iter().copied().enumerate() {
+            if current_state.values_h[i] != s {
+                s.draw(i, &mut display);
+                current_state.values_h[i] = s;
+            }
+        }
+
+        for (i, s) in new_state.values_v.iter().copied().enumerate() {
+            if current_state.values_v[i] != s {
+                s.draw(i, &mut display);
+                current_state.values_v[i] = s;
+            }
+        }
     }
 }
