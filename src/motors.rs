@@ -26,8 +26,6 @@ fn pwm_config_motor(power: i16) -> Config {
         (0, 0)
     };
 
-    log::info!("MOTOR A {} B {}", duty_a, duty_b);
-
     let mut c = Config::default();
     c.invert_a = false;
     c.invert_b = false;
@@ -45,8 +43,6 @@ fn pwm_config_servo(steer: i16) -> Config {
         .min(SERVO_MAX_DUTY)
         .max(SERVO_MIN_DUTY);
 
-    log::info!("SERVO B {}", duty_b);
-
     let mut c = Config::default();
     c.invert_a = false;
     c.invert_b = false;
@@ -58,12 +54,6 @@ fn pwm_config_servo(steer: i16) -> Config {
     c.top = SERVO_TOP;
     c
 }
-
-// let mut pwm_1 = Pwm::new_output_ab(p.PWM_CH1, p.PIN_2, p.PIN_3, pwm_config(0, 0));
-// let mut pwm_2 = Pwm::new_output_ab(p.PWM_CH3, p.PIN_6, p.PIN_7, pwm_config(0, 0));
-
-//     pwm_1.set_config(&c1);
-//     pwm_2.set_config(&c2);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct MotorsData {
