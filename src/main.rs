@@ -16,6 +16,7 @@ use embassy_rp::peripherals::{
 };
 use embassy_rp::uart::BufferedInterruptHandler;
 use embassy_rp::usb::{Driver, InterruptHandler as InterruptHandlerUsb};
+use embassy_time::{Duration, Instant};
 use rp2040_panic_usb_boot as _;
 use static_cell::StaticCell;
 
@@ -90,22 +91,24 @@ async fn core0_task() -> ! {
     let mut power = 0i16;
 
     loop {
-        let c = cmd::CMD.wait().await;
-        log::info!("cmd: {}", c.name());
+        if cmd::CMD.signaled() {
+            let c = cmd::CMD.wait().await;
+            log::info!("cmd: {}", c.name());
 
-        match c {
-            cmd::Cmd::Previous => steer -= 1,
-            cmd::Cmd::Next => steer += 1,
-            cmd::Cmd::Plus => power += 1000,
-            cmd::Cmd::Minus => power -= 1000,
-            _ => {}
+            match c {
+                cmd::Cmd::Previous => steer -= 1,
+                cmd::Cmd::Next => steer += 1,
+                cmd::Cmd::Plus => power += 1000,
+                cmd::Cmd::Minus => power -= 1000,
+                _ => {}
+            }
+
+            ui.values_h[0].text("TEST");
+            ui.values_h[1].text("TEST");
+            ui.values_h[2].steer(steer);
+            ui.values_h[3].text("TEST");
+            ui.values_h[4].power(power);
         }
-
-        ui.values_h[0].text("TEST");
-        ui.values_h[1].text("TEST");
-        ui.values_h[2].steer(steer);
-        ui.values_h[3].text("TEST");
-        ui.values_h[4].power(power);
 
         motors::MOTORS_DATA.signal(motors::MotorsData { power, steer });
 
@@ -125,8 +128,7 @@ async fn core0_task() -> ! {
                 l[6],
                 l[7]
             );
-            log::info!("core 0 sends value");
-            lcd::VISUAL_STATE.signal(ui);
+            log::info!("got visual");
         }
 
         if imu::IMU_DATA.signaled() {
@@ -141,6 +143,9 @@ async fn core0_task() -> ! {
                 data.vertical
             );
         }
+
+        lcd::VISUAL_STATE.signal(ui);
+        embassy_time::Timer::after(Duration::from_millis(100)).await;
     }
 }
 

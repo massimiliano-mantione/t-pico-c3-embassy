@@ -29,20 +29,21 @@ pub async fn imu_task(uart0: UART0, pin_16: PIN_16, pin_17: PIN_17) {
     loop {
         let mut buf = [0; 1];
 
-        log::info!("reading IMU");
-
-        match rx.read_exact(&mut buf).await {
-            Ok(_) => {
-                log::info!("IMU byte");
-
-                let received = buf[0];
-                if let Some(raw) = decoder.update(received) {
-                    data.update(&raw);
-                    IMU_DATA.signal(data);
+        match embassy_time::with_timeout(Duration::from_secs(5), rx.read_exact(&mut buf)).await {
+            Ok(result) => match result {
+                Ok(_) => {
+                    let received = buf[0];
+                    if let Some(raw) = decoder.update(received) {
+                        data.update(&raw);
+                        IMU_DATA.signal(data);
+                    }
                 }
-            }
-            Err(err) => {
-                log::info!("IMU uart read error: {}", err);
+                Err(err) => {
+                    log::info!("IMU uart read error: {}", err);
+                }
+            },
+            Err(_) => {
+                log::error!("timeout reading IMU uart");
             }
         }
     }
