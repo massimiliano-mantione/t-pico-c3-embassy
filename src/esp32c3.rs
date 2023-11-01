@@ -255,7 +255,7 @@ impl AtReply {
                     rssi,
                 }))
             } else if let Some(args) = s.strip_prefix("CIPSTA:") {
-                let (param, arg) = args.split_once(",").ok_or(AtReplyParseError)?;
+                let (param, arg) = args.split_once(":").ok_or(AtReplyParseError)?;
                 let info = match param {
                     "ip" => IpSta::Ip(ArrayString::try_from(arg).map_err(|_| AtReplyParseError)?),
                     "gateway" => {
@@ -349,7 +349,6 @@ enum AtCommand {
     At,
     AtRst,
     AtRfPower,
-    AtCwInit,
     AtCwMode(CwMode),
     AtCIpRecvMode(CIpRecvMode),
     AtCwJap {
@@ -415,7 +414,6 @@ impl AtCommand {
             AtCommand::At => (SECS_4, NTW_INIT),
             AtCommand::AtRst => (SECS_4, NTW_INIT),
             AtCommand::AtRfPower => (SECS_4, NTW_INIT),
-            AtCommand::AtCwInit => (SECS_4, NTW_INIT),
             AtCommand::AtCwMode(_) => (SECS_4, NTW_INIT),
             AtCommand::AtCIpRecvMode(_) => (SECS_4, NTW_INIT),
             AtCommand::AtCwJap { .. } => (SECS_10, NTW_SCAN),
@@ -439,27 +437,28 @@ impl AtCommand {
 
     pub fn build(&self) -> ArrayString<MAX_NETWORK_BUFFER_SIZE> {
         match self {
-            AtCommand::At => uformat!("ATE0\n").into(),
-            AtCommand::AtRst => uformat!("AT+RST\n").into(),
-            AtCommand::AtRfPower => uformat!("AT+RFPOWER=84\n").into(),
-            AtCommand::AtCwInit => uformat!("AT+CWINIT=1\n").into(),
-            AtCommand::AtCwMode(mode) => uformat!("AT+CWMODE:{}\n", mode.as_str()).into(),
-            AtCommand::AtCIpRecvMode(mode) => uformat!("AT+CWMODE:{}\n", mode.as_str()).into(),
+            AtCommand::At => uformat!("ATE0\n\r").into(),
+            AtCommand::AtRst => uformat!("AT+RST\n\r").into(),
+            AtCommand::AtRfPower => uformat!("AT+RFPOWER=84\n\r").into(),
+            AtCommand::AtCwMode(mode) => uformat!("AT+CWMODE={}\n\r", mode.as_str()).into(),
+            AtCommand::AtCIpRecvMode(mode) => {
+                uformat!("AT+CIPRECVMODE={}\n\r", mode.as_str()).into()
+            }
             AtCommand::AtCwJap { ssid, secret } => {
-                uformat!("AT+CWJAP:{},{}\n", ssid.as_str(), secret.as_str()).into()
+                uformat!("AT+CWJAP=\"{}\",\"{}\"\n\r", ssid.as_str(), secret.as_str()).into()
             }
             AtCommand::ATCwReConnCfg { interval, repeat } => {
-                uformat!("AT+CWRECONNCFG:{},{}\n", *interval, *repeat).into()
+                uformat!("AT+CWRECONNCFG={},{}\n\r", *interval, *repeat).into()
             }
-            AtCommand::AtCwLap => uformat!("AT+CWLAP\n").into(),
+            AtCommand::AtCwLap => uformat!("AT+CWLAP\n\r").into(),
             AtCommand::AtCwAutoConn(autoconnect) => {
-                uformat!("AT+CWAUTOCONN:{}\n", if *autoconnect { "1" } else { "0" }).into()
+                uformat!("AT+CWAUTOCONN={}\n\r", if *autoconnect { "1" } else { "0" }).into()
             }
-            AtCommand::AtCwState => uformat!("AT+CWSTATE?\n").into(),
+            AtCommand::AtCwState => uformat!("AT+CWSTATE?\n\r").into(),
             AtCommand::AtCwHostname(hostname) => {
-                uformat!("AT+CWHOSTNAME:{}\n", hostname.as_str()).into()
+                uformat!("AT+CWHOSTNAME=\"{}\"\n\r", hostname.as_str()).into()
             }
-            AtCommand::AtCIpState => uformat!("AT+CIPSTA?\n").into(),
+            AtCommand::AtCIpState => uformat!("AT+CIPSTA?\n\r").into(),
             AtCommand::AtCIpSend { link_id, data } => {
                 let mut s: ArrayString<MAX_NETWORK_BUFFER_SIZE> =
                     uformat!("AT+CIPSEND:{},{}", link_id, data.len()).into();
@@ -469,18 +468,20 @@ impl AtCommand {
                 s.push('\n');
                 s
             }
-            AtCommand::AtCIFSR => uformat!("AT+CIFSR\n").into(),
+            AtCommand::AtCIFSR => uformat!("AT+CIFSR\n\r").into(),
             AtCommand::AtCIpMux(mux) => {
-                uformat!("AT+CIPMUX:{}\n", if *mux { "1" } else { "0" }).into()
+                uformat!("AT+CIPMUX={}\n\r", if *mux { "1" } else { "0" }).into()
             }
-            AtCommand::AtCIpServCreate(port) => uformat!("AT+CIPSERVER:1,{},TCP,0\n", port).into(),
+            AtCommand::AtCIpServCreate(port) => {
+                uformat!("AT+CIPSERVER=1,{},\"TCP\",0\n\r", port).into()
+            }
             AtCommand::AtCIpServShutdown(close_all) => {
-                uformat!("ATCIPSERVER:1,{}\n", if *close_all { "1" } else { "0" }).into()
+                uformat!("ATCIPSERVER=0,{}\n\r", if *close_all { "1" } else { "0" }).into()
             }
-            AtCommand::AtCIpServMaxConn(max) => uformat!("AT+CIPSERVERMAXCONN:{}\n", max).into(),
-            AtCommand::AtCIpServTimeout(timeout) => uformat!("AT+CIPSTO:{}\n", timeout).into(),
+            AtCommand::AtCIpServMaxConn(max) => uformat!("AT+CIPSERVERMAXCONN:{}\n\r", max).into(),
+            AtCommand::AtCIpServTimeout(timeout) => uformat!("AT+CIPSTO:{}\n\r", timeout).into(),
             AtCommand::AtCIpDInfo(show) => {
-                uformat!("AT+CIPDINFO:{}\n", if *show { "1" } else { "0" }).into()
+                uformat!("AT+CIPDINFO:{}\n\r", if *show { "1" } else { "0" }).into()
             }
             AtCommand::ATCIpTcpOpt {
                 link_id,
@@ -489,7 +490,7 @@ impl AtCommand {
                 so_sndtimeo,
                 keep_alive,
             } => uformat!(
-                "AT+CIPTCPOPT:{},{},{},{},{}\n",
+                "AT+CIPTCPOPT:{},{},{},{},{}\n\r",
                 *link_id,
                 if let Some(so_linger) = so_linger {
                     *so_linger as i16
@@ -524,7 +525,6 @@ pub enum NetworkStatus {
     Initial,
     Checking,
     SettingPower,
-    Initializing,
     SettingMode,
     SettingRecvMode,
     SettingReconnection,
@@ -554,7 +554,6 @@ impl NetworkStatus {
             NetworkStatus::Initial => "INITIAL",
             NetworkStatus::Checking => "CHECKING",
             NetworkStatus::SettingPower => "SETTING-POWER",
-            NetworkStatus::Initializing => "INITIALIZING",
             NetworkStatus::SettingMode => "SETTING-MODE",
             NetworkStatus::SettingRecvMode => "SETTING-RECV-MODE",
             NetworkStatus::SettingReconnection => "SETTING-RECONNECTION",
@@ -877,10 +876,6 @@ impl Esp32C3 {
                     Some(AtCommand::AtRfPower)
                 }
                 NetworkStatus::SettingPower => {
-                    self.status = NetworkStatus::Initializing;
-                    Some(AtCommand::AtCwInit)
-                }
-                NetworkStatus::Initializing => {
                     self.status = NetworkStatus::SettingMode;
                     Some(AtCommand::AtCwMode(CwMode::Station))
                 }
@@ -987,7 +982,6 @@ impl Esp32C3 {
                 NetworkStatus::Initial => self.reset(),
                 NetworkStatus::Checking => self.reset(),
                 NetworkStatus::SettingPower => self.reset(),
-                NetworkStatus::Initializing => self.reset(),
                 NetworkStatus::SettingMode => self.reset(),
                 NetworkStatus::SettingRecvMode => self.reset(),
                 NetworkStatus::SettingReconnection => self.reset(),
