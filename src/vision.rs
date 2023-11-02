@@ -214,9 +214,9 @@ impl LaserData {
         }
     }
 
-    pub fn update(&mut self, lasers: &RawLaserReadings, config: &RaceConfig) {
-        let lower = lasers[self.position.physical_index(self.sign, false)];
-        let upper = lasers[self.position.physical_index(self.sign, true)];
+    pub fn update(&mut self, raw_readings: &RawLaserReadings, config: &RaceConfig) {
+        let lower = raw_readings.values[self.position.physical_index(self.sign, false)];
+        let upper = raw_readings.values[self.position.physical_index(self.sign, true)];
         self.lower = lower;
         self.upper = upper;
         let slope_delta = config.slope_distance_delta as u16;

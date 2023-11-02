@@ -65,25 +65,14 @@ pub struct ImuData {
     pub yaw: i16,
     pub pitch: i16,
     pub roll: i16,
-    pub yaw_speed: i16,
-    pub pitch_speed: i16,
-    pub roll_speed: i16,
     pub side: i16,
     pub forward: i16,
     pub vertical: i16,
-    pub since: Instant,
+    pub timestamp: Instant,
     pub dt: Duration,
 }
 
 const DT_MIN: Duration = Duration::from_micros(100);
-
-fn angle_speed(a1: i16, a2: i16, dt: Duration) -> i16 {
-    let a1 = a1 as i32 * 1000000;
-    let a2 = a2 as i32 * 1000000;
-    let dt = dt.as_micros() as i32;
-    let s = (a1 - a2) / dt;
-    s as i16
-}
 
 impl ImuData {
     pub fn init() -> Self {
@@ -91,36 +80,26 @@ impl ImuData {
             yaw: 0,
             pitch: 0,
             roll: 0,
-            yaw_speed: 0,
-            pitch_speed: 0,
-            roll_speed: 0,
             side: 0,
             forward: 0,
             vertical: 0,
-            since: Instant::now(),
+            timestamp: Instant::now(),
             dt: DT_MIN,
         }
     }
     pub fn update(&mut self, data: &Bno080RawRvcData) {
         let now = Instant::now();
-        let dt = now - self.since;
+        let dt = now - self.timestamp;
         let dt = if dt.as_micros() == 0 { DT_MIN } else { dt };
-
-        let yaw_speed = angle_speed(data.yaw, self.yaw, dt);
-        let pitch_speed = angle_speed(data.pitch, self.pitch, dt);
-        let roll_speed = angle_speed(data.roll, self.roll, dt);
 
         self.yaw = data.yaw;
         self.pitch = data.pitch;
         self.roll = data.roll;
-        self.yaw_speed = yaw_speed;
-        self.pitch_speed = pitch_speed;
-        self.roll_speed = roll_speed;
         self.side = data.side;
         self.forward = data.forward;
         self.vertical = data.vertical;
 
-        self.since = now;
+        self.timestamp = now;
         self.dt = dt;
     }
 }

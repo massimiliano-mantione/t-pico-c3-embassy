@@ -2,12 +2,19 @@ use embassy_rp::i2c::{AbortReason as I2cAbortReason, Async, Error as I2cError, I
 use embassy_rp::peripherals::I2C0;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
-use embassy_time::Duration;
+use embassy_time::{Duration, Instant};
 use embedded_hal_async::i2c::I2c;
 
 pub type I2cBus = RpI2c<'static, I2C0, Async>;
+
 pub const RAW_LASERS_COUNT: usize = 8;
-pub type RawLaserReadings = [u16; RAW_LASERS_COUNT];
+
+#[derive(Clone, Copy)]
+pub struct RawLaserReadings {
+    pub values: [u16; RAW_LASERS_COUNT],
+    pub timestamp: Instant,
+    pub dt: Duration,
+}
 
 pub static RAW_LASER_READINGS: Signal<CriticalSectionRawMutex, RawLaserReadings> = Signal::new();
 
@@ -73,12 +80,19 @@ async fn read_distance(i2c: &mut I2cBus) -> u16 {
 }
 
 pub async fn lasers_task(mut i2c: I2cBus) {
+    let mut raw_readings = RawLaserReadings {
+        values: [0u16; RAW_LASERS_COUNT],
+        timestamp: Instant::now(),
+        dt: Duration::from_micros(100),
+    };
     loop {
-        let mut distances = [0u16; RAW_LASERS_COUNT];
-        for (chan, d) in distances.iter_mut().enumerate() {
+        for (chan, d) in raw_readings.values.iter_mut().enumerate() {
             select_i2c_channel(&mut i2c, chan).await;
             *d = read_distance(&mut i2c).await;
         }
-        RAW_LASER_READINGS.signal(distances);
+        let now = Instant::now();
+        raw_readings.dt = now - raw_readings.timestamp;
+        raw_readings.timestamp = now;
+        RAW_LASER_READINGS.signal(raw_readings);
     }
 }

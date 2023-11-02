@@ -104,9 +104,9 @@ async fn core0_task() -> ! {
             }
 
             ui.values_h[0].text("TEST");
-            ui.values_h[1].text("TEST");
+            ui.values_h[1].text("STEER");
             ui.values_h[2].steer(steer);
-            ui.values_h[3].text("TEST");
+            ui.values_h[3].text("POWER");
             ui.values_h[4].power(power);
         }
 
@@ -117,35 +117,16 @@ async fn core0_task() -> ! {
             v.update(&l, &config);
             ui.update_vision(&v);
 
-            log::info!(
-                "L {} {} {} {} {} {} {} {}",
-                l[0],
-                l[1],
-                l[2],
-                l[3],
-                l[4],
-                l[5],
-                l[6],
-                l[7]
-            );
-            log::info!("got visual");
+            log::info!("L dt {}us", l.dt.as_micros());
         }
 
         if imu::IMU_DATA.signaled() {
             let data = imu::IMU_DATA.wait().await;
-            log::info!(
-                "IMU R {} P {} Y {}   F {} S {} V {}",
-                data.roll,
-                data.pitch,
-                data.yaw,
-                data.forward,
-                data.side,
-                data.vertical
-            );
+            log::info!("IMU dt {}us", data.dt.as_micros());
         }
 
         lcd::VISUAL_STATE.signal(ui);
-        embassy_time::Timer::after(Duration::from_millis(100)).await;
+        embassy_time::Timer::after(Duration::from_millis(1)).await;
     }
 }
 
