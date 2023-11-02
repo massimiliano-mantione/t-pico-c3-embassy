@@ -2,6 +2,7 @@ use crate::vision::LaserSidePosition;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(usize)]
+#[allow(dead_code)]
 pub enum RaceConfigEntry {
     MaxSpeed,
     MinSpeed,
@@ -254,6 +255,7 @@ impl RaceConfig {
         }
     }
 
+    #[allow(unused)]
     pub fn reset(&mut self, entry: RaceConfigEntry) {
         match entry {
             RaceConfigEntry::MaxSpeed => self.max_speed = Self::init().max_speed,

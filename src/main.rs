@@ -6,7 +6,6 @@
 
 use buttons::{LeftButton, RightButton};
 use embassy_executor::Executor;
-use embassy_futures::select::{select3, Either3};
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::i2c::{Config as I2cConfig, I2c as RpI2c, InterruptHandler as InterruptHandlerI2c};
@@ -28,6 +27,7 @@ mod imu;
 mod lasers;
 mod lcd;
 mod motors;
+mod screens;
 mod uformat;
 mod vision;
 
@@ -78,56 +78,11 @@ static mut CORE1_STACK: Stack<16384> = Stack::new();
 static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 
-use vision::Vision;
-
 #[embassy_executor::task]
 async fn core0_task() -> ! {
     log::info!("Hello from core 0");
-
-    let mut ui = lcd::VisualState::init();
-    let mut v = Vision::new();
-    let config = configuration::RaceConfig::init();
-
-    let mut steer = 0i16;
-    let mut power = 0i16;
-
     loop {
-        match select3(
-            lasers::RAW_LASER_READINGS.wait(),
-            imu::IMU_DATA.wait(),
-            cmd::CMD.wait(),
-        )
-        .await
-        {
-            Either3::First(data) => {
-                v.update(&data, &config);
-                ui.update_vision(&v);
-
-                log::info!("L dt {}us", data.dt.as_micros());
-            }
-            Either3::Second(data) => {
-                log::info!("IMU dt {}us", data.dt.as_micros());
-                ui.values_h[0].imu(data.yaw, data.pitch, data.roll);
-            }
-            Either3::Third(c) => {
-                log::info!("cmd: {}", c.name());
-                match c {
-                    cmd::Cmd::Previous => steer -= 1,
-                    cmd::Cmd::Next => steer += 1,
-                    cmd::Cmd::Plus => power += 1000,
-                    cmd::Cmd::Minus => power -= 1000,
-                    _ => {}
-                }
-            }
-        }
-
-        ui.values_h[1].text("STEER");
-        ui.values_h[2].steer(steer);
-        ui.values_h[3].text("POWER");
-        ui.values_h[4].power(power);
-
-        motors::MOTORS_DATA.signal(motors::MotorsData { power, steer });
-        lcd::VISUAL_STATE.signal(ui);
+        screens::run().await;
     }
 }
 

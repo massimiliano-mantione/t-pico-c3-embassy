@@ -35,13 +35,33 @@ const VISUAL_STATE_H_WIDTH: i32 = 135;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum VisualStateH {
-    Text { text: &'static str, color: Rgb565 },
-    Value { value: i16, color: Rgb565 },
-    Gauge { value: i16, max: i16, color: Rgb565 },
-    Imu { yaw: i16, pitch: i16, roll: i16 },
+    Empty,
+    Text {
+        text: &'static str,
+        color: Rgb565,
+    },
+    Value {
+        value: i16,
+        color: Rgb565,
+    },
+    #[allow(unused)]
+    Gauge {
+        value: i16,
+        max: i16,
+        color: Rgb565,
+    },
+    Imu {
+        yaw: i16,
+        pitch: i16,
+        roll: i16,
+    },
 }
 
 impl VisualStateH {
+    pub fn empty(&mut self) {
+        *self = Self::Empty
+    }
+
     pub fn text(&mut self, text: &'static str) {
         *self = Self::Text {
             text,
@@ -111,6 +131,7 @@ impl VisualStateH {
 
     pub fn needs_border(&self) -> bool {
         match self {
+            VisualStateH::Empty { .. } => false,
             VisualStateH::Text { .. } => false,
             VisualStateH::Value { .. } => false,
             VisualStateH::Gauge { .. } => false,
@@ -137,6 +158,7 @@ impl VisualStateH {
         }
 
         match *self {
+            VisualStateH::Empty => {}
             VisualStateH::Text { text, color } => {
                 let style = MonoTextStyle::new(&FONT_10X20, color);
                 Text::new(
