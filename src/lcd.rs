@@ -21,7 +21,7 @@ use embedded_graphics_core::pixelcolor::Rgb565;
 use embedded_graphics_core::prelude::{DrawTarget, Point, RgbColor, Size, WebColors};
 use embedded_graphics_core::primitives::Rectangle;
 use embedded_graphics_core::Drawable;
-use embedded_graphics_framebuf::FrameBuf;
+//use embedded_graphics_framebuf::FrameBuf;
 use embedded_hal_0::digital::v2::OutputPin;
 use mipidsi::Builder;
 
@@ -29,16 +29,15 @@ pub const STATES_COUNT: usize = 5;
 
 const VISUAL_STATE_H_HEIGHT: i32 = 240 / 10;
 const VISUAL_STATE_H_WIDTH: i32 = 135;
-const VISUAL_STATE_H_SIZE: usize =
-    (VISUAL_STATE_H_HEIGHT as usize) * (VISUAL_STATE_H_WIDTH as usize);
-pub type VisualStateHBuf = [Rgb565; VISUAL_STATE_H_SIZE];
+// const VISUAL_STATE_H_SIZE: usize =
+//     (VISUAL_STATE_H_HEIGHT as usize) * (VISUAL_STATE_H_WIDTH as usize);
+// pub type VisualStateHBuf = [Rgb565; VISUAL_STATE_H_SIZE];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum VisualStateH {
     Text { text: &'static str, color: Rgb565 },
     Value { value: i16, color: Rgb565 },
     Gauge { value: i16, max: i16, color: Rgb565 },
-    Bar { value: i16, max: i16, color: Rgb565 },
 }
 
 impl VisualStateH {
@@ -49,6 +48,7 @@ impl VisualStateH {
         }
     }
 
+    #[allow(unused)]
     pub fn text_red(&mut self, text: &'static str) {
         *self = Self::Text {
             text,
@@ -56,6 +56,7 @@ impl VisualStateH {
         }
     }
 
+    #[allow(unused)]
     pub fn text_green(&mut self, text: &'static str) {
         *self = Self::Text {
             text,
@@ -78,6 +79,7 @@ impl VisualStateH {
         }
     }
 
+    #[allow(unused)]
     pub fn power(&mut self, power: i16) {
         *self = Self::Value {
             value: power,
@@ -98,30 +100,61 @@ impl VisualStateH {
         }
     }
 
+    pub const fn size() -> Size {
+        Size::new(VISUAL_STATE_H_WIDTH as u32, VISUAL_STATE_H_HEIGHT as u32)
+    }
+
+    pub fn needs_border(&self) -> bool {
+        match self {
+            VisualStateH::Text { .. } => false,
+            VisualStateH::Value { .. } => false,
+            VisualStateH::Gauge { .. } => false,
+        }
+    }
+
     pub fn draw(&self, index: usize, target: &mut impl DrawTarget<Color = Rgb565>) {
-        target
-            .fill_solid(
-                &Rectangle::new(
-                    Self::position(index),
-                    Size::new(VISUAL_STATE_H_WIDTH as u32, VISUAL_STATE_H_HEIGHT as u32),
-                ),
-                Rgb565::BLACK,
-            )
-            .ok();
+        if self.needs_border() {
+            let rectangle = Rectangle::new(Self::position(index), Self::size());
+            let style = PrimitiveStyleBuilder::new()
+                .fill_color(Rgb565::BLACK)
+                .stroke_color(Rgb565::CSS_SLATE_GRAY)
+                .stroke_width(1) // > 1 is not currently supported in embedded-graphics on triangles
+                .build();
+            rectangle.draw_styled(&style, target).ok();
+        } else {
+            target
+                .fill_solid(
+                    &Rectangle::new(Self::position(index), Self::size()),
+                    Rgb565::BLACK,
+                )
+                .ok();
+        }
 
         match *self {
             VisualStateH::Text { text, color } => {
                 let style = MonoTextStyle::new(&FONT_10X20, color);
-                Text::new(text, Point { x: 2, y: 2 }, style)
-                    .draw(target)
-                    .ok();
+                Text::new(
+                    text,
+                    Self::position(index)
+                        + Point {
+                            x: 2,
+                            y: VISUAL_STATE_H_HEIGHT / 2,
+                        },
+                    style,
+                )
+                .draw(target)
+                .ok();
             }
             VisualStateH::Value { value, color } => {
                 let text = uformat!("{}", value);
                 let style = MonoTextStyle::new(&FONT_10X20, color);
                 Text::new(
                     text.as_str(),
-                    Self::position(index) + Point { x: 2, y: 2 },
+                    Self::position(index)
+                        + Point {
+                            x: 2,
+                            y: VISUAL_STATE_H_HEIGHT / 2,
+                        },
                     style,
                 )
                 .draw(target)
@@ -138,42 +171,15 @@ impl VisualStateH {
                 .draw(target)
                 .ok();
             }
-            VisualStateH::Bar { value, max, color } => {
-                let height = (VISUAL_STATE_H_HEIGHT - 2) as u32;
-                let rectangle = if value > 0 {
-                    let width = (value as u32) * (max as u32) / ((VISUAL_STATE_H_WIDTH - 2) as u32);
-                    Rectangle::new(Point::new(1, 1), Size::new(width, height))
-                } else if value < 0 {
-                    let width =
-                        ((-value) as u32) * (max as u32) / ((VISUAL_STATE_H_WIDTH - 2) as u32);
-                    Rectangle::new(
-                        Self::position(index)
-                            + Point::new(VISUAL_STATE_H_WIDTH - (width as i32 + 1), 1),
-                        Size::new(width, height),
-                    )
-                } else {
-                    let hp = (VISUAL_STATE_H_HEIGHT - 1) / 2;
-                    Rectangle::new(
-                        Point::new(1, hp),
-                        Size::new((VISUAL_STATE_H_WIDTH - 2) as u32, 2),
-                    )
-                };
-                let style = PrimitiveStyleBuilder::new()
-                    .fill_color(color)
-                    .stroke_color(Rgb565::CSS_SLATE_GRAY)
-                    .stroke_width(1) // > 1 is not currently supported in embedded-graphics on triangles
-                    .build();
-                rectangle.draw_styled(&style, target).ok();
-            }
         }
     }
 }
 
 const VISUAL_STATE_V_HEIGHT: i32 = 240 / 2;
 const VISUAL_STATE_V_WIDTH: i32 = 135 / 5;
-const VISUAL_STATE_V_SIZE: usize =
-    (VISUAL_STATE_V_HEIGHT as usize) * (VISUAL_STATE_V_WIDTH as usize);
-pub type VisualStateVBuf = [Rgb565; VISUAL_STATE_V_SIZE];
+// const VISUAL_STATE_V_SIZE: usize =
+//     (VISUAL_STATE_V_HEIGHT as usize) * (VISUAL_STATE_V_WIDTH as usize);
+// pub type VisualStateVBuf = [Rgb565; VISUAL_STATE_V_SIZE];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum VisualStateV {

@@ -224,6 +224,7 @@ impl LaserData {
         self.status = LaserStatus::from_value(self.value(), self.position, config);
     }
 
+    #[allow(unused)]
     pub fn ch1(&self) -> char {
         if self.slope {
             'S'
@@ -236,12 +237,15 @@ impl LaserData {
             }
         }
     }
+    #[allow(unused)]
     pub fn ch2(&self) -> char {
         unsafe { char::from_u32_unchecked(('0' as u32) + ((self.value() as u32 / 100) % 10)) }
     }
+    #[allow(unused)]
     pub fn ch3(&self) -> char {
         unsafe { char::from_u32_unchecked(('0' as u32) + ((self.value() as u32 / 10) % 10)) }
     }
+    #[allow(unused)]
     pub fn ch4(&self) -> char {
         unsafe { char::from_u32_unchecked(('0' as u32) + ((self.value() as u32 / 1) % 10)) }
     }
