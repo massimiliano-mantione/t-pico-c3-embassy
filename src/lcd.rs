@@ -276,6 +276,9 @@ pub enum VisualStateV {
         color: Rgb565,
         mark_color: Rgb565,
     },
+    Solid {
+        color: Rgb565,
+    },
 }
 
 impl VisualStateV {
@@ -299,6 +302,28 @@ impl VisualStateV {
         }
     }
 
+    pub fn empty(&mut self) {
+        *self = Self::Solid {
+            color: Rgb565::BLACK,
+        }
+    }
+
+    pub fn solid(&mut self, color: Rgb565) {
+        *self = Self::Solid { color }
+    }
+
+    pub fn green(&mut self) {
+        self.solid(Rgb565::GREEN)
+    }
+
+    pub fn red(&mut self) {
+        self.solid(Rgb565::RED)
+    }
+
+    pub fn yellow(&mut self) {
+        self.solid(Rgb565::YELLOW)
+    }
+
     pub fn position(index: usize) -> Point {
         Point {
             x: VISUAL_STATE_V_WIDTH * (index as i32),
@@ -306,16 +331,26 @@ impl VisualStateV {
         }
     }
 
+    pub fn needs_clearing(&self) -> bool {
+        match self {
+            VisualStateV::Gauge { .. } => true,
+            VisualStateV::Bar { .. } => true,
+            VisualStateV::Solid { .. } => false,
+        }
+    }
+
     pub fn draw(&self, index: usize, target: &mut impl DrawTarget<Color = Rgb565>) {
-        target
-            .fill_solid(
-                &Rectangle::new(
-                    Self::position(index),
-                    Size::new(VISUAL_STATE_V_WIDTH as u32, VISUAL_STATE_V_HEIGHT as u32),
-                ),
-                Rgb565::BLACK,
-            )
-            .ok();
+        if self.needs_clearing() {
+            target
+                .fill_solid(
+                    &Rectangle::new(
+                        Self::position(index),
+                        Size::new(VISUAL_STATE_V_WIDTH as u32, VISUAL_STATE_V_HEIGHT as u32),
+                    ),
+                    Rgb565::BLACK,
+                )
+                .ok();
+        }
 
         match *self {
             VisualStateV::Gauge { value, max, color } => {
@@ -361,6 +396,17 @@ impl VisualStateV {
                 .into_styled(PrimitiveStyle::<Rgb565>::with_stroke(mark_color, 3))
                 .draw(target)
                 .ok();
+            }
+            VisualStateV::Solid { color } => {
+                target
+                    .fill_solid(
+                        &Rectangle::new(
+                            Self::position(index),
+                            Size::new(VISUAL_STATE_V_WIDTH as u32, VISUAL_STATE_V_HEIGHT as u32),
+                        ),
+                        color,
+                    )
+                    .ok();
             }
         }
     }

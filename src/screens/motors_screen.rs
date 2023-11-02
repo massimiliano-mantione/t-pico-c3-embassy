@@ -6,7 +6,7 @@ use crate::{
     imu::IMU_DATA,
     lasers::RAW_LASER_READINGS,
     lcd::{VisualState, VISUAL_STATE},
-    motors::{MotorsData, MOTORS_DATA},
+    motors::motors_go,
     vision::Vision,
 };
 
@@ -56,7 +56,7 @@ pub async fn run(config: &RaceConfig) -> Screen {
             }
         }
 
-        MOTORS_DATA.signal(MotorsData { power, steer });
+        motors_go(power, steer);
         VISUAL_STATE.signal(ui);
     }
 }

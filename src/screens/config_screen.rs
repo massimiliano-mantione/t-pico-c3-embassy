@@ -6,21 +6,24 @@ use crate::{
     imu::IMU_DATA,
     lasers::RAW_LASER_READINGS,
     lcd::{VisualState, VISUAL_STATE},
-    motors::{MotorsData, MOTORS_DATA},
-    vision::Vision,
+    motors::motors_stop,
 };
 
 use super::Screen;
 
 pub async fn run(config: &mut RaceConfig) -> Screen {
     let mut ui = VisualState::init();
-    ui.update_vision(&Vision::new());
 
     ui.values_h[0].empty();
     ui.values_h[1].text_red("COUNTRYMAN");
     ui.values_h[2].text_green("CONFIG");
     ui.values_h[3].empty();
     ui.values_h[4].empty();
+    ui.values_v[0].empty();
+    ui.values_v[1].empty();
+    ui.values_v[2].empty();
+    ui.values_v[3].empty();
+    ui.values_v[4].empty();
 
     let mut entry = RaceConfigEntry::start();
     let mut editing = false;
@@ -82,7 +85,7 @@ pub async fn run(config: &mut RaceConfig) -> Screen {
         }
         ui.values_h[4].value(config.get(entry));
 
-        MOTORS_DATA.signal(MotorsData { power: 0, steer: 0 });
+        motors_stop();
         VISUAL_STATE.signal(ui);
     }
 }

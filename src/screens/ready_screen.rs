@@ -6,7 +6,7 @@ use crate::{
     imu::IMU_DATA,
     lasers::RAW_LASER_READINGS,
     lcd::{VisualState, VISUAL_STATE},
-    motors::{MotorsData, MOTORS_DATA},
+    motors::motors_stop,
     vision::Vision,
 };
 
@@ -15,6 +15,8 @@ use super::Screen;
 pub async fn run(config: &RaceConfig) -> Screen {
     let mut ui = VisualState::init();
     let mut v = Vision::new();
+
+    motors_stop();
 
     ui.values_h[0].empty();
     ui.values_h[1].text_red("COUNTRYMAN");
@@ -45,7 +47,7 @@ pub async fn run(config: &RaceConfig) -> Screen {
             }
         }
 
-        MOTORS_DATA.signal(MotorsData { power: 0, steer: 0 });
+        motors_stop();
         VISUAL_STATE.signal(ui);
     }
 }

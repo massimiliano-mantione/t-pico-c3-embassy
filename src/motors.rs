@@ -56,12 +56,20 @@ fn pwm_config_servo(steer: i16) -> Config {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct MotorsData {
+struct MotorsData {
     pub power: i16,
     pub steer: i16,
 }
 
-pub static MOTORS_DATA: Signal<CriticalSectionRawMutex, MotorsData> = Signal::new();
+static MOTORS_DATA: Signal<CriticalSectionRawMutex, MotorsData> = Signal::new();
+
+pub fn motors_go(power: i16, steer: i16) {
+    MOTORS_DATA.signal(MotorsData { power, steer })
+}
+
+pub fn motors_stop() {
+    MOTORS_DATA.signal(MotorsData { power: 0, steer: 0 })
+}
 
 pub async fn motors_task(
     pwm_ch6: PWM_CH6,
