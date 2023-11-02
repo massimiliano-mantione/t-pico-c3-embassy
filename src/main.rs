@@ -90,8 +90,6 @@ async fn core0_task() -> ! {
     let mut steer = 0i16;
     let mut power = 0i16;
 
-    ui.values_h[0].value(0);
-
     loop {
         match select3(
             lasers::RAW_LASER_READINGS.wait(),
@@ -108,7 +106,7 @@ async fn core0_task() -> ! {
             }
             Either3::Second(data) => {
                 log::info!("IMU dt {}us", data.dt.as_micros());
-                ui.values_h[0].value(data.yaw);
+                ui.values_h[0].imu(data.yaw, data.pitch, data.roll);
             }
             Either3::Third(c) => {
                 log::info!("cmd: {}", c.name());

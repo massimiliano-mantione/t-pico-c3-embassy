@@ -38,6 +38,7 @@ pub enum VisualStateH {
     Text { text: &'static str, color: Rgb565 },
     Value { value: i16, color: Rgb565 },
     Gauge { value: i16, max: i16, color: Rgb565 },
+    Imu { yaw: i16, pitch: i16, roll: i16 },
 }
 
 impl VisualStateH {
@@ -79,6 +80,10 @@ impl VisualStateH {
         }
     }
 
+    pub fn imu(&mut self, yaw: i16, pitch: i16, roll: i16) {
+        *self = Self::Imu { yaw, pitch, roll }
+    }
+
     #[allow(unused)]
     pub fn power(&mut self, power: i16) {
         *self = Self::Value {
@@ -109,6 +114,7 @@ impl VisualStateH {
             VisualStateH::Text { .. } => false,
             VisualStateH::Value { .. } => false,
             VisualStateH::Gauge { .. } => false,
+            VisualStateH::Imu { .. } => true,
         }
     }
 
@@ -138,7 +144,7 @@ impl VisualStateH {
                     Self::position(index)
                         + Point {
                             x: 2,
-                            y: VISUAL_STATE_H_HEIGHT / 2,
+                            y: VISUAL_STATE_H_HEIGHT - 5,
                         },
                     style,
                 )
@@ -153,7 +159,7 @@ impl VisualStateH {
                     Self::position(index)
                         + Point {
                             x: 2,
-                            y: VISUAL_STATE_H_HEIGHT / 2,
+                            y: VISUAL_STATE_H_HEIGHT - 5,
                         },
                     style,
                 )
@@ -168,6 +174,59 @@ impl VisualStateH {
                     Self::position(index) + Point::new(center + delta, VISUAL_STATE_H_HEIGHT - 1),
                 )
                 .into_styled(PrimitiveStyle::<Rgb565>::with_stroke(color, 3))
+                .draw(target)
+                .ok();
+            }
+            VisualStateH::Imu { yaw, pitch, roll } => {
+                let center_x = VISUAL_STATE_H_WIDTH / 2;
+                let center_y = VISUAL_STATE_H_HEIGHT / 2;
+
+                let (yaw, pitch, roll) = (yaw / 100, pitch / 100, roll / 100);
+
+                let (yaw_delta, yaw_color) = if yaw < -90 {
+                    (yaw + 180, Rgb565::YELLOW)
+                } else if yaw < 90 {
+                    (yaw, Rgb565::GREEN)
+                } else {
+                    (180 - yaw, Rgb565::YELLOW)
+                };
+                let yaw_x = center_x + ((yaw_delta as i32 * (center_x - 1)) / 90);
+                let (pitch_delta, pitch_color) = if pitch < -90 {
+                    (pitch + 180, Rgb565::RED)
+                } else if pitch < 90 {
+                    (pitch, Rgb565::BLUE)
+                } else {
+                    (180 - pitch, Rgb565::RED)
+                };
+                let pitch_y = center_y - ((pitch_delta as i32 * (center_y - 1)) / 90);
+                let (roll_delta, roll_color) = if roll < -90 {
+                    (roll + 180, Rgb565::RED)
+                } else if yaw < 90 {
+                    (roll, Rgb565::BLUE)
+                } else {
+                    (180 - roll, Rgb565::RED)
+                };
+                let roll_x = center_x + ((roll_delta as i32 * (center_x - 1)) / 90);
+
+                Line::new(
+                    Self::position(index) + Point::new(yaw_x, 1),
+                    Self::position(index) + Point::new(yaw_x, VISUAL_STATE_H_HEIGHT - 1),
+                )
+                .into_styled(PrimitiveStyle::<Rgb565>::with_stroke(yaw_color, 3))
+                .draw(target)
+                .ok();
+                Line::new(
+                    Self::position(index) + Point::new(1, pitch_y),
+                    Self::position(index) + Point::new(VISUAL_STATE_H_WIDTH - 1, pitch_y),
+                )
+                .into_styled(PrimitiveStyle::<Rgb565>::with_stroke(pitch_color, 1))
+                .draw(target)
+                .ok();
+                Line::new(
+                    Self::position(index) + Point::new(roll_x, 1),
+                    Self::position(index) + Point::new(roll_x, VISUAL_STATE_H_HEIGHT - 1),
+                )
+                .into_styled(PrimitiveStyle::<Rgb565>::with_stroke(roll_color, 1))
                 .draw(target)
                 .ok();
             }
