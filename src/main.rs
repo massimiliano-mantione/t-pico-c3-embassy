@@ -194,8 +194,9 @@ fn main() -> ! {
     });
 
     log::info!("set up i2c ");
-    let i2c: lasers::I2cBus =
-        RpI2c::new_async(p.I2C0, p.PIN_13, p.PIN_12, Irqs, I2cConfig::default());
+    let mut config = I2cConfig::default();
+    config.frequency = 400_000;
+    let i2c: lasers::I2cBus = RpI2c::new_async(p.I2C0, p.PIN_13, p.PIN_12, Irqs, config);
 
     let executor0 = EXECUTOR0.init(Executor::new());
     executor0.run(|spawner| {
