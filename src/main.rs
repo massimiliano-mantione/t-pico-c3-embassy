@@ -6,6 +6,7 @@
 
 use buttons::{LeftButton, RightButton};
 use embassy_executor::Executor;
+use embassy_futures::select::{select3, Either3};
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::i2c::{Config as I2cConfig, I2c as RpI2c, InterruptHandler as InterruptHandlerI2c};
@@ -16,7 +17,6 @@ use embassy_rp::peripherals::{
 };
 use embassy_rp::uart::BufferedInterruptHandler;
 use embassy_rp::usb::{Driver, InterruptHandler as InterruptHandlerUsb};
-use embassy_time::{Duration, Instant};
 use rp2040_panic_usb_boot as _;
 use static_cell::StaticCell;
 
@@ -90,43 +90,45 @@ async fn core0_task() -> ! {
     let mut steer = 0i16;
     let mut power = 0i16;
 
+    ui.values_h[0].value(0);
+
     loop {
-        if cmd::CMD.signaled() {
-            let c = cmd::CMD.wait().await;
-            log::info!("cmd: {}", c.name());
+        match select3(
+            lasers::RAW_LASER_READINGS.wait(),
+            imu::IMU_DATA.wait(),
+            cmd::CMD.wait(),
+        )
+        .await
+        {
+            Either3::First(data) => {
+                v.update(&data, &config);
+                ui.update_vision(&v);
 
-            match c {
-                cmd::Cmd::Previous => steer -= 1,
-                cmd::Cmd::Next => steer += 1,
-                cmd::Cmd::Plus => power += 1000,
-                cmd::Cmd::Minus => power -= 1000,
-                _ => {}
+                log::info!("L dt {}us", data.dt.as_micros());
             }
-
-            ui.values_h[0].text("TEST");
-            ui.values_h[1].text("STEER");
-            ui.values_h[2].steer(steer);
-            ui.values_h[3].text("POWER");
-            ui.values_h[4].power(power);
+            Either3::Second(data) => {
+                log::info!("IMU dt {}us", data.dt.as_micros());
+                ui.values_h[0].value(data.yaw);
+            }
+            Either3::Third(c) => {
+                log::info!("cmd: {}", c.name());
+                match c {
+                    cmd::Cmd::Previous => steer -= 1,
+                    cmd::Cmd::Next => steer += 1,
+                    cmd::Cmd::Plus => power += 1000,
+                    cmd::Cmd::Minus => power -= 1000,
+                    _ => {}
+                }
+            }
         }
+
+        ui.values_h[1].text("STEER");
+        ui.values_h[2].steer(steer);
+        ui.values_h[3].text("POWER");
+        ui.values_h[4].power(power);
 
         motors::MOTORS_DATA.signal(motors::MotorsData { power, steer });
-
-        if lasers::RAW_LASER_READINGS.signaled() {
-            let l = lasers::RAW_LASER_READINGS.wait().await;
-            v.update(&l, &config);
-            ui.update_vision(&v);
-
-            log::info!("L dt {}us", l.dt.as_micros());
-        }
-
-        if imu::IMU_DATA.signaled() {
-            let data = imu::IMU_DATA.wait().await;
-            log::info!("IMU dt {}us", data.dt.as_micros());
-        }
-
         lcd::VISUAL_STATE.signal(ui);
-        embassy_time::Timer::after(Duration::from_millis(1)).await;
     }
 }
 
