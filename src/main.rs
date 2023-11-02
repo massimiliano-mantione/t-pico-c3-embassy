@@ -22,6 +22,7 @@ use static_cell::StaticCell;
 
 mod buttons;
 mod cmd;
+mod configuration;
 mod esp32c3;
 mod imu;
 mod lasers;
@@ -85,7 +86,7 @@ async fn core0_task() -> ! {
 
     let mut ui = lcd::VisualState::init();
     let mut v = Vision::new();
-    let config = vision::RaceConfig::init();
+    let config = configuration::RaceConfig::init();
 
     let mut steer = 0i16;
     let mut power = 0i16;
