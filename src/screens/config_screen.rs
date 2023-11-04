@@ -83,7 +83,12 @@ pub async fn run(config: &mut RaceConfig) -> Screen {
         } else {
             ui.values_h[3].text(entry.name());
         }
-        ui.values_h[4].value(config.get(entry));
+
+        let value = config.get(entry);
+        match entry.value_name(value) {
+            Some(name) => ui.values_h[4].text(name),
+            None => ui.values_h[4].value(value),
+        }
 
         motors_stop();
         VISUAL_STATE.signal(ui);

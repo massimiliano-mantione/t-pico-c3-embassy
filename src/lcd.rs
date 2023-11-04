@@ -100,6 +100,19 @@ impl VisualStateH {
         }
     }
 
+    pub fn target(&mut self, angle: i16, status: LaserStatus) {
+        *self = Self::Gauge {
+            value: angle,
+            max: 60,
+            color: match status {
+                LaserStatus::Back => Rgb565::RED,
+                LaserStatus::Alert => Rgb565::YELLOW,
+                LaserStatus::Regular => Rgb565::BLUE,
+                LaserStatus::Overflow => Rgb565::GREEN,
+            },
+        }
+    }
+
     pub fn imu(&mut self, yaw: i16, pitch: i16, roll: i16) {
         *self = Self::Imu { yaw, pitch, roll }
     }

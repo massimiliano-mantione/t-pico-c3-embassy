@@ -19,17 +19,18 @@ use embassy_rp::usb::{Driver, InterruptHandler as InterruptHandlerUsb};
 use rp2040_panic_usb_boot as _;
 use static_cell::StaticCell;
 
-mod buttons;
-mod cmd;
-mod configuration;
-mod esp32c3;
-mod imu;
-mod lasers;
-mod lcd;
-mod motors;
-mod screens;
-mod uformat;
-mod vision;
+pub mod buttons;
+pub mod cmd;
+pub mod configuration;
+pub mod esp32c3;
+pub mod imu;
+pub mod lasers;
+pub mod lcd;
+pub mod motors;
+pub mod race;
+pub mod screens;
+pub mod uformat;
+pub mod vision;
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandlerUsb<USB>;

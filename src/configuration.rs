@@ -1,4 +1,4 @@
-use crate::vision::LaserSidePosition;
+use crate::{race::Angle, vision::LaserSidePosition};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(usize)]
@@ -26,10 +26,12 @@ pub enum RaceConfigEntry {
     StillnessDelta,
     StillnessTime,
     InversionTime,
+    TrackSide,
+    TrackSideDistance,
     End,
 }
 pub const RACE_CONFIG_ENTRY_START: usize = 0;
-pub const RACE_CONFIG_ENTRY_END: usize = RaceConfigEntry::InversionTime as usize + 1;
+pub const RACE_CONFIG_ENTRY_END: usize = RaceConfigEntry::End as usize;
 
 impl From<usize> for RaceConfigEntry {
     fn from(value: usize) -> RaceConfigEntry {
@@ -103,6 +105,8 @@ impl RaceConfigEntry {
             RaceConfigEntry::StillnessDelta => "STILL DELTA",
             RaceConfigEntry::StillnessTime => "STILL TIME",
             RaceConfigEntry::InversionTime => "INV TIME",
+            RaceConfigEntry::TrackSide => "TRACK SIDE",
+            RaceConfigEntry::TrackSideDistance => "TRACK DIST",
             RaceConfigEntry::End => "END",
         }
     }
@@ -131,6 +135,8 @@ impl RaceConfigEntry {
             RaceConfigEntry::StillnessDelta => 0,
             RaceConfigEntry::StillnessTime => 0,
             RaceConfigEntry::InversionTime => 100,
+            RaceConfigEntry::TrackSide => 0,
+            RaceConfigEntry::TrackSideDistance => 10,
             RaceConfigEntry::End => 0,
         }
     }
@@ -159,6 +165,8 @@ impl RaceConfigEntry {
             RaceConfigEntry::StillnessDelta => 100,
             RaceConfigEntry::StillnessTime => 100,
             RaceConfigEntry::InversionTime => 1000,
+            RaceConfigEntry::TrackSide => 1,
+            RaceConfigEntry::TrackSideDistance => 550,
             RaceConfigEntry::End => 1,
         }
     }
@@ -187,7 +195,43 @@ impl RaceConfigEntry {
             RaceConfigEntry::StillnessDelta => 1,
             RaceConfigEntry::StillnessTime => 1,
             RaceConfigEntry::InversionTime => 10,
+            RaceConfigEntry::TrackSide => 1,
+            RaceConfigEntry::TrackSideDistance => 10,
             RaceConfigEntry::End => 1,
+        }
+    }
+
+    pub fn value_name(self, value: i16) -> Option<&'static str> {
+        match self {
+            RaceConfigEntry::MaxSpeed => None,
+            RaceConfigEntry::MinSpeed => None,
+            RaceConfigEntry::BackSpeed => None,
+            RaceConfigEntry::BackTime => None,
+            RaceConfigEntry::SprintSpeed => None,
+            RaceConfigEntry::SprintTime => None,
+            RaceConfigEntry::AlertDistanceCenter => None,
+            RaceConfigEntry::AlertDistanceSide30 => None,
+            RaceConfigEntry::AlertDistanceSide60 => None,
+            RaceConfigEntry::BackDistanceCenter => None,
+            RaceConfigEntry::BackDistanceSide30 => None,
+            RaceConfigEntry::BackDistanceSide60 => None,
+            RaceConfigEntry::SteerKpN => None,
+            RaceConfigEntry::SteerKpD => None,
+            RaceConfigEntry::InterpolationKpN => None,
+            RaceConfigEntry::InterpolationKpD => None,
+            RaceConfigEntry::SlopeDistanceDelta => None,
+            RaceConfigEntry::ClimbingSpeed => None,
+            RaceConfigEntry::ClimbingAngle => None,
+            RaceConfigEntry::StillnessDelta => None,
+            RaceConfigEntry::StillnessTime => None,
+            RaceConfigEntry::InversionTime => None,
+            RaceConfigEntry::TrackSide => match value {
+                0 => Some("LEFT"),
+                1 => Some("RIGHT"),
+                _ => None,
+            },
+            RaceConfigEntry::TrackSideDistance => None,
+            RaceConfigEntry::End => None,
         }
     }
 }
@@ -216,6 +260,8 @@ pub struct RaceConfig {
     pub stillness_delta: i16,
     pub stillness_time: i16,
     pub inversion_time: i16,
+    pub track_side: i16,
+    pub track_side_distance: i16,
 }
 
 impl Default for RaceConfig {
@@ -250,6 +296,8 @@ impl RaceConfig {
             stillness_delta: 0,
             stillness_time: 500,
             inversion_time: 500,
+            track_side: 0,
+            track_side_distance: 400,
         }
     }
 
@@ -266,6 +314,18 @@ impl RaceConfig {
             LaserSidePosition::Center => self.back_distance_center as u16,
             LaserSidePosition::Side30 => self.back_distance_side_30 as u16,
             LaserSidePosition::Side60 => self.back_distance_side_60 as u16,
+        }
+    }
+
+    pub fn climb_power_boost(&self, pitch: Angle) -> i16 {
+        if pitch <= Angle::ZERO {
+            0
+        } else {
+            let boost_range = (self.climbing_speed - self.max_speed) as i32;
+            let pitch_range = self.climbing_angle as i32;
+            let pitch_delta = pitch.value().min(pitch_range);
+            let boost = pitch_delta * boost_range / pitch_range;
+            boost as i16
         }
     }
 
@@ -312,6 +372,10 @@ impl RaceConfig {
             RaceConfigEntry::StillnessDelta => self.stillness_delta = Self::init().stillness_delta,
             RaceConfigEntry::StillnessTime => self.stillness_time = Self::init().stillness_time,
             RaceConfigEntry::InversionTime => self.inversion_time = Self::init().inversion_time,
+            RaceConfigEntry::TrackSide => self.track_side = Self::init().track_side,
+            RaceConfigEntry::TrackSideDistance => {
+                self.track_side_distance = Self::init().track_side_distance
+            }
             RaceConfigEntry::End => {}
         }
     }
@@ -340,6 +404,8 @@ impl RaceConfig {
             RaceConfigEntry::StillnessDelta => self.stillness_delta,
             RaceConfigEntry::StillnessTime => self.stillness_time,
             RaceConfigEntry::InversionTime => self.inversion_time,
+            RaceConfigEntry::TrackSide => self.track_side,
+            RaceConfigEntry::TrackSideDistance => self.track_side_distance,
             RaceConfigEntry::End => 0,
         }
     }
@@ -368,6 +434,8 @@ impl RaceConfig {
             RaceConfigEntry::StillnessDelta => self.stillness_delta = value,
             RaceConfigEntry::StillnessTime => self.stillness_time = value,
             RaceConfigEntry::InversionTime => self.inversion_time = value,
+            RaceConfigEntry::TrackSide => self.track_side = value,
+            RaceConfigEntry::TrackSideDistance => self.track_side_distance = value,
             RaceConfigEntry::End => {}
         }
     }

@@ -40,7 +40,7 @@ pub async fn run(config: &RaceConfig) -> Screen {
                 match c {
                     Cmd::Previous => return Screen::RaceNow,
                     Cmd::Next => return Screen::Race,
-                    Cmd::Plus => return Screen::Motors,
+                    Cmd::Plus => return Screen::Simulation,
                     Cmd::Minus => return Screen::Config,
                     _ => {}
                 }

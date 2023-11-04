@@ -1,8 +1,18 @@
-use crate::{configuration::RaceConfig, lasers::RawLaserReadings};
+use crate::{
+    configuration::RaceConfig,
+    lasers::RawLaserReadings,
+    race::{Angle, TrackSide},
+};
 
 pub const NUM_LASER_POSITIONS: usize = 5;
 pub const CENTER_LASER: usize = 2;
 pub const LASER_OVERFLOW: u16 = 600;
+
+pub const LILL: usize = 0;
+pub const LIL: usize = 1;
+pub const LIC: usize = 2;
+pub const LIR: usize = 3;
+pub const LIRR: usize = 4;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u8)]
@@ -138,11 +148,23 @@ impl LaserData {
     pub fn update(&mut self, raw_readings: &RawLaserReadings, config: &RaceConfig) {
         let lower = raw_readings.values[self.position.physical_index(self.sign, false)];
         let upper = raw_readings.values[self.position.physical_index(self.sign, true)];
+        let slope_delta = config.slope_distance_delta as u16;
+        let slope = upper <= (lower + slope_delta) && upper >= (lower + slope_delta / 2);
         self.lower = lower;
         self.upper = upper;
-        let slope_delta = config.slope_distance_delta as u16;
-        self.slope = upper <= (lower + slope_delta) && upper >= (lower + slope_delta / 2);
-        self.status = LaserStatus::from_value(self.value(), self.position, config);
+        self.slope = slope;
+        self.status = if slope {
+            LaserStatus::Overflow
+        } else {
+            LaserStatus::from_value(self.value(), self.position, config)
+        };
+    }
+
+    pub fn copy_status(&mut self, other: &Self) {
+        self.upper = other.upper;
+        self.lower = other.lower;
+        self.slope = other.slope;
+        self.status = other.status;
     }
 
     #[allow(unused)]
@@ -194,4 +216,379 @@ impl Vision {
             laser.update(raw_readings, config);
         }
     }
+
+    pub fn copy_status(&mut self, other: &Self) {
+        self.lasers
+            .iter_mut()
+            .zip(other.lasers.iter())
+            .for_each(|(laser, other_laser)| laser.copy_status(other_laser));
+    }
+
+    pub fn detect_back_panic(&self, config: &RaceConfig) -> bool {
+        self.lasers[LILL].value() < config.back_distance_side_60 as u16
+            || self.lasers[LIRR].value() < config.back_distance_side_60 as u16
+            || self.lasers[LIL].value() < config.back_distance_side_30 as u16
+            || self.lasers[LIR].value() < config.back_distance_side_30 as u16
+            || self.lasers[LIC].value() < config.back_distance_center as u16
+    }
+
+    pub fn compute_alert_power(&self, config: &RaceConfig, target_index: Option<usize>) -> i16 {
+        if let Some(target_index) = target_index {
+            let distance = self.lasers[target_index].value() as i32;
+            let alert = match target_index {
+                LILL | LIRR => config.alert_distance_side_60 as i32,
+                LIL | LIR => config.alert_distance_side_30 as i32,
+                LIC => config.alert_distance_center as i32,
+                _ => DMAX,
+            };
+
+            if distance >= alert {
+                config.max_speed
+            } else {
+                let max_speed = config.max_speed as i32;
+                let min_speed = config.min_speed as i32;
+                let speed_span = max_speed - min_speed;
+
+                let alert_span = alert / 2;
+                let alert_delta = (distance - (alert / 2)).max(0);
+
+                let speed_delta = speed_span * alert_span * alert_delta;
+                (min_speed + speed_delta) as i16
+            }
+        } else {
+            config.max_speed
+        }
+    }
+}
+
+pub struct VisionStatus {
+    pub lasers: [LaserStatus; NUM_LASER_POSITIONS],
+    pub tracking_side: Option<TrackSide>,
+}
+
+const IGNORE_LONE_READING_MM: u16 = 30;
+
+impl VisionStatus {
+    pub fn new() -> Self {
+        Self {
+            lasers: [LaserStatus::Overflow; NUM_LASER_POSITIONS],
+            tracking_side: None,
+        }
+    }
+
+    pub fn update(&mut self, current: &Vision, previous: &Vision) {
+        self.lasers
+            .iter_mut()
+            .zip(current.lasers.iter())
+            .for_each(|(laser, current_laser)| {
+                *laser = current_laser.status;
+            });
+        for i in [CENTER_LASER - 1, CENTER_LASER, CENTER_LASER + 1] {
+            if self.lasers[i] == LaserStatus::Regular
+                && current.lasers[i].value() >= LASER_OVERFLOW - IGNORE_LONE_READING_MM
+            {
+                if self.lasers[i - 1] == LaserStatus::Overflow
+                    && self.lasers[i + 1] == LaserStatus::Overflow
+                {
+                    self.lasers[i] = LaserStatus::Overflow;
+                } else if previous.lasers[i].status == LaserStatus::Overflow {
+                    self.lasers[i] = LaserStatus::Overflow;
+                }
+            }
+        }
+    }
+
+    pub fn compute_kind(
+        &mut self,
+        vision: &Vision,
+        tracking_side: Option<TrackSide>,
+    ) -> VisionKind {
+        const CLR: bool = true;
+        const BLK: bool = false;
+
+        let (sll, sl, sc, sr, srr) = (
+            self.lasers[0] == LaserStatus::Overflow,
+            self.lasers[1] == LaserStatus::Overflow,
+            self.lasers[2] == LaserStatus::Overflow,
+            self.lasers[3] == LaserStatus::Overflow,
+            self.lasers[4] == LaserStatus::Overflow,
+        );
+        let (dll, dl, dc, dr, drr) = (
+            vision.lasers[0].value() as i32,
+            vision.lasers[1].value() as i32,
+            vision.lasers[2].value() as i32,
+            vision.lasers[3].value() as i32,
+            vision.lasers[4].value() as i32,
+        );
+
+        let kind = match (sll, sl, sc, sr, srr) {
+            (CLR, CLR, CLR, CLR, CLR) => VisionKind::Clear,
+            (BLK, CLR, CLR, CLR, CLR) => VisionKind::LeftTrack1 { dll },
+            (BLK, BLK, CLR, CLR, CLR) => VisionKind::LeftTrack2 { dll, dl },
+            (BLK, BLK, BLK, CLR, CLR) => VisionKind::LeftTrack3 { dll, dl, dc },
+            (CLR, CLR, CLR, CLR, BLK) => VisionKind::RightTrack1 { drr },
+            (CLR, CLR, CLR, BLK, BLK) => VisionKind::RightTrack2 { drr, dr },
+            (CLR, CLR, BLK, BLK, BLK) => VisionKind::RightTrack3 { drr, dr, dc },
+            (BLK, BLK, BLK, BLK, CLR) => VisionKind::RightEscape,
+            (CLR, BLK, BLK, BLK, BLK) => VisionKind::LeftEscape,
+            (CLR, BLK, BLK, BLK, CLR) => VisionKind::CenterBlocked { dl, dc, dr },
+            _ => VisionKind::Blocked {
+                dll,
+                dl,
+                dc,
+                dr,
+                drr,
+            },
+        };
+
+        let detected_side = kind.detect_tracking_side();
+        if let Some(detected_side) = detected_side {
+            match tracking_side {
+                Some(side) => {
+                    if detected_side == side {
+                        self.tracking_side = Some(detected_side)
+                    }
+                }
+                None => self.tracking_side = Some(detected_side),
+            }
+        }
+
+        kind
+    }
+
+    pub fn clear_tracking(&mut self) {
+        self.tracking_side = None;
+    }
+}
+
+pub enum VisionKind {
+    Clear,
+    LeftTrack1 {
+        dll: i32,
+    },
+    LeftTrack2 {
+        dll: i32,
+        dl: i32,
+    },
+    LeftTrack3 {
+        dll: i32,
+        dl: i32,
+        dc: i32,
+    },
+    LeftEscape,
+    RightEscape,
+    RightTrack3 {
+        drr: i32,
+        dr: i32,
+        dc: i32,
+    },
+    RightTrack2 {
+        drr: i32,
+        dr: i32,
+    },
+    RightTrack1 {
+        drr: i32,
+    },
+    CenterBlocked {
+        dl: i32,
+        dc: i32,
+        dr: i32,
+    },
+    Blocked {
+        dll: i32,
+        dl: i32,
+        dc: i32,
+        dr: i32,
+        drr: i32,
+    },
+}
+
+impl VisionKind {
+    pub fn detect_tracking_side(&self) -> Option<TrackSide> {
+        match self {
+            VisionKind::Clear => None,
+            VisionKind::LeftTrack1 { .. } => Some(TrackSide::Left),
+            VisionKind::LeftTrack2 { .. } => Some(TrackSide::Left),
+            VisionKind::LeftTrack3 { .. } => Some(TrackSide::Left),
+            VisionKind::LeftEscape => Some(TrackSide::Right),
+            VisionKind::RightEscape => Some(TrackSide::Left),
+            VisionKind::RightTrack3 { .. } => Some(TrackSide::Right),
+            VisionKind::RightTrack2 { .. } => Some(TrackSide::Right),
+            VisionKind::RightTrack1 { .. } => Some(TrackSide::Right),
+            VisionKind::CenterBlocked { .. } => None,
+            VisionKind::Blocked {
+                dll, dl, dr, drr, ..
+            } => {
+                if *dll < DMAX || *dl < DMAX {
+                    Some(TrackSide::Left)
+                } else if *drr < DMAX || *dr < DMAX {
+                    Some(TrackSide::Right)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
+fn left_side_pid(dll: &i32, config: &RaceConfig) -> Angle {
+    let distance = *dll;
+    let desired = config.track_side_distance as i32;
+    let delta = distance - desired;
+    let kpn = config.steer_kp_n as i32;
+    let kpd = config.steer_kp_n as i32;
+    let pid = delta * kpn / kpd;
+    pid.into()
+}
+
+fn biased_left_side_pid(dll: &i32, bias: Option<TrackSide>, config: &RaceConfig) -> Angle {
+    match bias {
+        Some(TrackSide::Right) => Angle::SMALL,
+        Some(TrackSide::Left) | None => left_side_pid(dll, config),
+    }
+}
+
+fn right_side_pid(drr: &i32, config: &RaceConfig) -> Angle {
+    let distance = *drr;
+    let desired = config.track_side_distance as i32;
+    let delta = desired - distance;
+    let kpn = config.steer_kp_n as i32;
+    let kpd = config.steer_kp_n as i32;
+    let pid = delta * kpn / kpd;
+    pid.into()
+}
+
+fn biased_right_side_pid(drr: &i32, bias: Option<TrackSide>, config: &RaceConfig) -> Angle {
+    match bias {
+        Some(TrackSide::Left) => -Angle::SMALL,
+        Some(TrackSide::Right) | None => right_side_pid(drr, config),
+    }
+}
+
+const DMAX: i32 = LASER_OVERFLOW as i32;
+
+impl VisionKind {
+    pub fn compute_relative_target(
+        &self,
+        main_direction: Angle,
+        heading: Angle,
+        bias: Option<TrackSide>,
+        tracking: Option<TrackSide>,
+        config: &RaceConfig,
+    ) -> (Angle, Option<usize>) {
+        match self {
+            VisionKind::Clear => match tracking {
+                Some(TrackSide::Left) => {
+                    let target_limit = main_direction + Angle::L90;
+                    let side_result = heading + Angle::SLL;
+                    let absolute_target = target_limit.max(side_result);
+                    (absolute_target - heading, None)
+                }
+                Some(TrackSide::Right) => {
+                    let target_limit = main_direction + Angle::R90;
+                    let side_result = heading + Angle::SRR;
+                    let absolute_target = target_limit.min(side_result);
+                    (absolute_target - heading, None)
+                }
+                None => (main_direction - heading, None),
+            },
+            VisionKind::LeftTrack1 { dll } => (biased_left_side_pid(dll, bias, config), None),
+            VisionKind::LeftTrack2 { dll, dl, .. } => (
+                biased_left_side_pid(dll, bias, config).max(interpolate(
+                    &[*dl, DMAX],
+                    Angle::SL,
+                    Angle::SC,
+                )),
+                Some(LIL),
+            ),
+            VisionKind::LeftTrack3 { dc, .. } => {
+                (interpolate(&[*dc, DMAX], Angle::SC, Angle::SRR), Some(LIC))
+            }
+            VisionKind::LeftEscape => (Angle::SRR, Some(LIR)),
+            VisionKind::RightEscape => (Angle::SRR, Some(LIL)),
+            VisionKind::RightTrack3 { dc, .. } => {
+                (interpolate(&[DMAX, *dc], Angle::SLL, Angle::SC), Some(LIC))
+            }
+            VisionKind::RightTrack2 { drr, dr } => (
+                biased_right_side_pid(drr, bias, config).min(interpolate(
+                    &[DMAX, *dr],
+                    Angle::SC,
+                    Angle::SL,
+                )),
+                Some(LIL),
+            ),
+            VisionKind::RightTrack1 { drr } => (biased_right_side_pid(drr, bias, config), None),
+            VisionKind::CenterBlocked { dl, dc, dr } => {
+                let target = interpolate(&[*dl, *dc, *dr], Angle::SL, Angle::SR);
+                if target.value() < 0 {
+                    (Angle::SLL, Some(LIL))
+                } else {
+                    (Angle::SRR, Some(LIR))
+                }
+            }
+            VisionKind::Blocked {
+                dll,
+                dl,
+                dc,
+                dr,
+                drr,
+            } => {
+                let target = interpolate(&[*dll, *dl, *dc, *dr, *drr], Angle::SLL, Angle::SRR);
+                let index = if target < Angle::SL - Angle::SHALF {
+                    LILL
+                } else if target < Angle::SHALF {
+                    LIL
+                } else if target > Angle::SR + Angle::SHALF {
+                    LIRR
+                } else if target > Angle::SHALF {
+                    LIL
+                } else {
+                    LIC
+                };
+                (target, Some(index))
+            }
+        }
+    }
+}
+
+// Returns the non-normalized weighted average (weighted average * sum), and the sum of the values
+pub fn weighted_average<const N: usize>(values: &[i32; N]) -> (i32, i32) {
+    if N < 1 {
+        return (0, 1);
+    }
+
+    if N < 2 {
+        return (0, values[0]);
+    }
+
+    let sum: i32 = values.iter().copied().sum();
+    if sum == 0 {
+        return (0, 1);
+    };
+
+    let side_double = N as i32;
+    let center_double = side_double - 1;
+
+    let average = values
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(index, value)| (index as i32 * 2, value))
+        .fold(0, |result, (index_double, value)| {
+            let weight = index_double - center_double;
+            result + (value * weight)
+        });
+    (average / center_double, sum)
+}
+
+pub fn interpolate<const N: usize>(weights: &[i32; N], from: Angle, to: Angle) -> Angle {
+    let (from, to): (i32, i32) = (from.into(), to.into());
+    let (weight, sum) = weighted_average(weights);
+    let middle2 = from + to;
+    let side2 = to - from;
+
+    let normalized_side2 = (weight * side2) / sum;
+    let normalized2 = middle2 + normalized_side2;
+    let normalized = normalized2 / 2;
+    normalized.into()
 }

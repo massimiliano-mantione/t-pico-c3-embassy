@@ -9,9 +9,11 @@ use static_cell::make_static;
 
 pub static IMU_DATA: Signal<CriticalSectionRawMutex, ImuData> = Signal::new();
 
+const BUF_SIZE: usize = 64;
+
 pub async fn imu_task(uart0: UART0, pin_16: PIN_16, pin_17: PIN_17) {
-    let tx_buf = &mut make_static!([0u8; 16])[..];
-    let rx_buf = &mut make_static!([0u8; 16])[..];
+    let tx_buf = &mut make_static!([0u8; BUF_SIZE])[..];
+    let rx_buf = &mut make_static!([0u8; BUF_SIZE])[..];
     let uart = BufferedUart::new(
         uart0,
         super::Irqs,
