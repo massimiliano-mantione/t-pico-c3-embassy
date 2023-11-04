@@ -273,9 +273,8 @@ impl Default for RaceConfig {
 impl RaceConfig {
     pub const fn init() -> Self {
         Self {
-            // max_speed: 0.6,
             max_speed: 4000,
-            min_speed: 3500,
+            min_speed: 3000,
             back_speed: 8000,
             back_time: 400,
             sprint_speed: 8000,
@@ -286,7 +285,7 @@ impl RaceConfig {
             back_distance_center: 50,
             back_distance_side_30: 50,
             back_distance_side_60: 60,
-            steer_kp_n: 100,
+            steer_kp_n: 5,
             steer_kp_d: 100,
             interpolation_kp_n: 130,
             interpolation_kp_d: 100,
