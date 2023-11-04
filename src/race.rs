@@ -201,9 +201,9 @@ pub struct RaceAction {
 
 fn detect_tilt_alert(pitch: Angle, roll: Angle) -> bool {
     pitch < -Angle::TILT_ALERT
-        || pitch > -Angle::TILT_ALERT
+        || pitch > Angle::TILT_ALERT
         || roll < -Angle::TILT_ALERT
-        || roll > -Angle::TILT_ALERT
+        || roll > Angle::TILT_ALERT
 }
 
 pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Screen {
@@ -249,6 +249,8 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
         let now = Instant::now();
         let dt = (now - last_timestamp).max(Duration::from_micros(100));
         last_timestamp = now;
+
+        log::info!("RACE DT {}us", dt.as_micros());
 
         let vision_kind = vs.compute_kind(&cv, None);
         let (relative_target, target_index) = vision_kind.compute_relative_target(
