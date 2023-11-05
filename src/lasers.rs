@@ -20,7 +20,47 @@ pub static RAW_LASER_READINGS: Signal<CriticalSectionRawMutex, RawLaserReadings>
 
 const TCA9548A_ADDR: u16 = 0x70;
 const GP2Y0E02B_ADDR: u16 = 0x40;
-const GP2Y0E02B_REG: u8 = 0x5E;
+const GP2Y0E02B_SHIFT_REG: u8 = 0x35;
+const GP2Y0E02B_MEDIAN_REG: u8 = 0x3F;
+const GP2Y0E02B_ACC_REG: u8 = 0xA8;
+const GP2Y0E02B_READ_REG: u8 = 0x5E;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+#[allow(unused)]
+enum Gp2Y0E02bShift {
+    Cm128 = 1,
+    Cm64 = 2,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+#[allow(unused)]
+enum Gp2Y0E02bMedian {
+    Med7 = 0x00,
+    Med5 = 0x10,
+    Med9 = 0x20,
+    Med1 = 0x30,
+}
+
+impl Gp2Y0E02bShift {
+    pub const fn divisor(self) -> u16 {
+        match self {
+            Gp2Y0E02bShift::Cm128 => 5,
+            Gp2Y0E02bShift::Cm64 => 6,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+#[allow(unused)]
+enum Gp2Y0E02bAcc {
+    Acc1 = 0,
+    Acc5 = 1,
+    Acc30 = 2,
+    Acc10 = 3,
+}
 
 fn i2c_error_message(err: &I2cError) -> &'static str {
     match err {
@@ -37,6 +77,9 @@ fn i2c_error_message(err: &I2cError) -> &'static str {
 }
 
 const I2C_TIMEOUT: Duration = Duration::from_secs(1);
+const SHIFT: Gp2Y0E02bShift = Gp2Y0E02bShift::Cm128;
+const MEDIAN: Gp2Y0E02bMedian = Gp2Y0E02bMedian::Med5;
+const ACCUMULATION: Gp2Y0E02bAcc = Gp2Y0E02bAcc::Acc5;
 
 async fn select_i2c_channel(i2c: &mut I2cBus, chan: usize) {
     match embassy_time::with_timeout(I2C_TIMEOUT, i2c.write_async(TCA9548A_ADDR, [1 << chan])).await
@@ -57,14 +100,14 @@ async fn read_distance(i2c: &mut I2cBus) -> u16 {
     let mut result_buf = [0u8; 2];
     match embassy_time::with_timeout(
         I2C_TIMEOUT,
-        i2c.write_read(GP2Y0E02B_ADDR, &[GP2Y0E02B_REG], &mut result_buf),
+        i2c.write_read(GP2Y0E02B_ADDR, &[GP2Y0E02B_READ_REG], &mut result_buf),
     )
     .await
     {
         Ok(result) => match result {
             Ok(_) => {
                 let raw_distance = ((result_buf[0] as u16) << 4) | ((result_buf[1] & 0xf) as u16);
-                let distance = (raw_distance * 10) / (1 << 6);
+                let distance = (raw_distance * 10) / (1 << SHIFT.divisor());
                 distance
             }
             Err(err) => {
@@ -79,7 +122,74 @@ async fn read_distance(i2c: &mut I2cBus) -> u16 {
     }
 }
 
+async fn set_accumulation(i2c: &mut I2cBus, acc: Gp2Y0E02bAcc) {
+    match embassy_time::with_timeout(
+        I2C_TIMEOUT,
+        i2c.write_async(GP2Y0E02B_ADDR, [GP2Y0E02B_ACC_REG, acc as u8]),
+    )
+    .await
+    {
+        Ok(result) => match result {
+            Ok(_) => {}
+            Err(err) => {
+                log::error!(
+                    "I2C set accumulator write error: {}",
+                    i2c_error_message(&err)
+                );
+            }
+        },
+        Err(_) => {
+            log::error!("I2C set accumulator timeout");
+        }
+    }
+}
+
+async fn set_shift(i2c: &mut I2cBus, shift: Gp2Y0E02bShift) {
+    match embassy_time::with_timeout(
+        I2C_TIMEOUT,
+        i2c.write_async(GP2Y0E02B_ADDR, [GP2Y0E02B_SHIFT_REG, shift as u8]),
+    )
+    .await
+    {
+        Ok(result) => match result {
+            Ok(_) => {}
+            Err(err) => {
+                log::error!("I2C set shift write error: {}", i2c_error_message(&err));
+            }
+        },
+        Err(_) => {
+            log::error!("I2C set shift timeout");
+        }
+    }
+}
+
+async fn set_median(i2c: &mut I2cBus, median: Gp2Y0E02bMedian) {
+    match embassy_time::with_timeout(
+        I2C_TIMEOUT,
+        i2c.write_async(GP2Y0E02B_ADDR, [GP2Y0E02B_MEDIAN_REG, median as u8]),
+    )
+    .await
+    {
+        Ok(result) => match result {
+            Ok(_) => {}
+            Err(err) => {
+                log::error!("I2C set median write error: {}", i2c_error_message(&err));
+            }
+        },
+        Err(_) => {
+            log::error!("I2C set median timeout");
+        }
+    }
+}
+
 pub async fn lasers_task(mut i2c: I2cBus) {
+    for chan in 0..RAW_LASERS_COUNT {
+        select_i2c_channel(&mut i2c, chan).await;
+        set_shift(&mut i2c, SHIFT).await;
+        set_median(&mut i2c, MEDIAN).await;
+        set_accumulation(&mut i2c, ACCUMULATION).await;
+    }
+
     let mut raw_readings = RawLaserReadings {
         values: [0u16; RAW_LASERS_COUNT],
         timestamp: Instant::now(),

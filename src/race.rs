@@ -8,7 +8,7 @@ use crate::lasers::RAW_LASER_READINGS;
 use crate::lcd::VISUAL_STATE;
 use crate::motors::motors_go;
 use crate::screens::Screen;
-use crate::vision::{LaserStatus, VisionStatus};
+use crate::vision::LaserStatus;
 use crate::{configuration::RaceConfig, lcd::VisualState, vision::Vision};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -122,8 +122,8 @@ impl Angle {
     pub const SLL: Self = Self { value: -60 };
     pub const SL: Self = Self { value: -30 };
     pub const SC: Self = Self { value: 0 };
-    pub const SR: Self = Self { value: -30 };
-    pub const SRR: Self = Self { value: -60 };
+    pub const SR: Self = Self { value: 30 };
+    pub const SRR: Self = Self { value: 60 };
     pub const SHALF: Self = Self { value: 15 };
 
     pub const TILT_ALERT: Self = Self { value: 45 };
@@ -212,8 +212,8 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
     let mut remaining_sprint = Some(Duration::from_millis(config.sprint_time as u64));
     let mut remaining_back_panic = None;
     let mut cv = Vision::new();
-    let mut pv = Vision::new();
-    let mut vs = VisionStatus::new();
+    // let mut pv = Vision::new();
+    // let mut vs = VisionStatus::new();
 
     let mut ui = VisualState::init();
 
@@ -241,7 +241,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
 
     let (raw_laser_readings, imu_data) = join(RAW_LASER_READINGS.wait(), IMU_DATA.wait()).await;
     cv.update(&raw_laser_readings, &config);
-    vs.update(&cv, &pv);
+    //vs.update(&cv, &pv);
     let mut current_heading = Angle::from_imu_value(imu_data.yaw);
     let mut current_pitch = Angle::from_imu_value(imu_data.pitch);
     let mut tilt_alert = detect_tilt_alert(current_pitch, Angle::from_imu_value(imu_data.roll));
@@ -252,23 +252,36 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
 
         log::info!("RACE DT {}us", dt.as_micros());
 
-        let vision_kind = vs.compute_kind(&cv, None);
-        let (relative_target, target_index) = vision_kind.compute_relative_target(
-            main_angle,
-            current_heading,
-            None,
-            vs.tracking_side,
-            config,
+        // let vision_kind = vs.compute_kind(&cv, None);
+        // let (relative_target, target_index) = vision_kind.compute_relative_target(
+        //     main_angle,
+        //     current_heading,
+        //     None,
+        //     vs.tracking_side,
+        //     config,
+        // );
+        // let mut power_state = if let Some(index) = target_index {
+        //     cv.lasers[index].status
+        // } else {
+        //     LaserStatus::Back
+        // };
+
+        let (relative_target, target_index, mut power_state) = cv.compute_target();
+
+        log::info!(
+            "RACE: [{:3} {:3} {:3} {:3} {:3}] rt {} ti {}",
+            cv.lasers[0].value(),
+            cv.lasers[1].value(),
+            cv.lasers[2].value(),
+            cv.lasers[3].value(),
+            cv.lasers[4].value(),
+            relative_target.value(),
+            target_index
         );
-        let mut power_state = if let Some(index) = target_index {
-            cv.lasers[index].status
-        } else {
-            LaserStatus::Back
-        };
 
         if cv.detect_back_panic(config) {
             remaining_back_panic = Some(Duration::from_millis(config.back_time as u64));
-            vs.clear_tracking();
+            //vs.clear_tracking();
         }
 
         let speed = if let Some(back_panic) = remaining_back_panic {
@@ -278,21 +291,22 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
                 None
             };
             power_state = LaserStatus::Back;
-            config.back_speed
+            -config.back_speed
         } else if let Some(sprint) = remaining_sprint {
             remaining_sprint = if sprint > dt { Some(sprint - dt) } else { None };
             config.sprint_speed
         } else {
-            cv.compute_alert_power(config, target_index) + config.climb_power_boost(current_pitch)
+            cv.compute_alert_power(config, Some(target_index))
+                + config.climb_power_boost(current_pitch)
         };
 
         let speed = if tilt_alert { 0 } else { speed };
 
         if current_heading < main_angle + Angle::L90 {
-            vs.clear_tracking();
+            //vs.clear_tracking();
             main_angle += Angle::L90;
         } else if current_heading > main_angle + Angle::R90 {
-            vs.clear_tracking();
+            //vs.clear_tracking();
             main_angle += Angle::R90;
         }
 
@@ -302,11 +316,12 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
         };
 
         if simulate {
-            ui.values_h[1].text(match vs.tracking_side {
-                Some(TrackSide::Left) => "TRACK LEFT",
-                Some(TrackSide::Right) => "TRACK RIGHT",
-                None => "TRACK NONE",
-            });
+            // ui.values_h[1].text(match vs.tracking_side {
+            //     Some(TrackSide::Left) => "TRACK LEFT",
+            //     Some(TrackSide::Right) => "TRACK RIGHT",
+            //     None => "TRACK NONE",
+            // });
+            ui.values_h[1].value(main_angle.into());
             ui.values_h[2].value(action.power);
             ui.values_h[3].steer(action.steer.into());
             ui.values_h[4].target(relative_target.into(), power_state);
@@ -318,9 +333,9 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
 
         match select3(RAW_LASER_READINGS.wait(), IMU_DATA.wait(), CMD.wait()).await {
             Either3::First(data) => {
-                pv.copy_status(&cv);
+                //pv.copy_status(&cv);
                 cv.update(&data, &config);
-                vs.update(&cv, &pv);
+                //vs.update(&cv, &pv);
             }
             Either3::Second(imu_data) => {
                 current_heading = Angle::from_imu_value(imu_data.yaw);

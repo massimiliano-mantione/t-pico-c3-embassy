@@ -273,17 +273,17 @@ impl Default for RaceConfig {
 impl RaceConfig {
     pub const fn init() -> Self {
         Self {
-            max_speed: 4000,
-            min_speed: 3000,
-            back_speed: 8000,
-            back_time: 400,
-            sprint_speed: 8000,
-            sprint_time: 1000,
-            alert_distance_center: 300,
+            max_speed: 2000,
+            min_speed: 1300,
+            back_speed: 4000,
+            back_time: 100,
+            sprint_speed: 2000,
+            sprint_time: 100,
+            alert_distance_center: 400,
             alert_distance_side_30: 350,
-            alert_distance_side_60: 400,
-            back_distance_center: 50,
-            back_distance_side_30: 50,
+            alert_distance_side_60: 250,
+            back_distance_center: 90,
+            back_distance_side_30: 80,
             back_distance_side_60: 60,
             steer_kp_n: 5,
             steer_kp_d: 100,
@@ -324,7 +324,7 @@ impl RaceConfig {
             let pitch_range = self.climbing_angle as i32;
             let pitch_delta = pitch.value().min(pitch_range);
             let boost = pitch_delta * boost_range / pitch_range;
-            boost as i16
+            boost.min(boost_range) as i16
         }
     }
 

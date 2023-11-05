@@ -6,7 +6,7 @@ use crate::{
 
 pub const NUM_LASER_POSITIONS: usize = 5;
 pub const CENTER_LASER: usize = 2;
-pub const LASER_OVERFLOW: u16 = 600;
+pub const LASER_OVERFLOW: u16 = 1200;
 
 pub const LILL: usize = 0;
 pub const LIL: usize = 1;
@@ -217,6 +217,32 @@ impl Vision {
         }
     }
 
+    pub fn compute_target(&self) -> (Angle, usize, LaserStatus) {
+        let target = interpolate(
+            &[
+                self.lasers[0].value() as i32,
+                self.lasers[1].value() as i32,
+                self.lasers[2].value() as i32,
+                self.lasers[3].value() as i32,
+                self.lasers[4].value() as i32,
+            ],
+            Angle::SLL,
+            Angle::SRR,
+        );
+        let index = if target < Angle::SL - Angle::SHALF {
+            LILL
+        } else if target < Angle::SHALF {
+            LIL
+        } else if target > Angle::SR + Angle::SHALF {
+            LIRR
+        } else if target > Angle::SHALF {
+            LIL
+        } else {
+            LIC
+        };
+        (target, index, self.lasers[index].status)
+    }
+
     pub fn copy_status(&mut self, other: &Self) {
         self.lasers
             .iter_mut()
@@ -252,7 +278,7 @@ impl Vision {
                 let alert_span = alert / 2;
                 let alert_delta = (distance - (alert / 2)).max(0);
 
-                let speed_delta = speed_span * alert_span * alert_delta;
+                let speed_delta = speed_span * alert_delta / alert_span;
                 (min_speed + speed_delta) as i16
             }
         } else {
@@ -590,5 +616,6 @@ pub fn interpolate<const N: usize>(weights: &[i32; N], from: Angle, to: Angle) -
     let normalized_side2 = (weight * side2) / sum;
     let normalized2 = middle2 + normalized_side2;
     let normalized = normalized2 / 2;
+
     normalized.into()
 }
