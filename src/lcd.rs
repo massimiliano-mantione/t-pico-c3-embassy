@@ -1,6 +1,6 @@
 use crate::uformat;
 use crate::uformat::FormattedText;
-use crate::vision::{LaserData, LaserStatus, Vision, LASER_OVERFLOW};
+use crate::vision::{is_in_window, LaserData, LaserStatus, Vision, LASER_OVERFLOW};
 use core::convert::Infallible;
 use display_interface_spi::SPIInterface;
 use embassy_rp::spi::{self, Spi};
@@ -288,6 +288,7 @@ pub enum VisualStateV {
         mark: u16,
         color: Rgb565,
         mark_color: Rgb565,
+        selected: bool,
     },
     Solid {
         color: Rgb565,
@@ -295,7 +296,7 @@ pub enum VisualStateV {
 }
 
 impl VisualStateV {
-    pub fn laser(&mut self, data: &LaserData) {
+    pub fn laser(&mut self, data: &LaserData, selected: bool) {
         let color = if data.slope {
             Rgb565::GREEN
         } else {
@@ -312,6 +313,7 @@ impl VisualStateV {
             mark: data.upper.min(LASER_OVERFLOW),
             color,
             mark_color: Rgb565::WHITE,
+            selected,
         }
     }
 
@@ -384,6 +386,7 @@ impl VisualStateV {
                 mark,
                 color,
                 mark_color,
+                selected,
             } => {
                 let width = VISUAL_STATE_V_WIDTH as u32 - 2;
                 let height = (value as u32) * ((VISUAL_STATE_V_HEIGHT - 2) as u32) / (max as u32);
@@ -409,6 +412,15 @@ impl VisualStateV {
                 .into_styled(PrimitiveStyle::<Rgb565>::with_stroke(mark_color, 3))
                 .draw(target)
                 .ok();
+                if selected {
+                    Line::new(
+                        Self::position(index) + Point::new(1, 0),
+                        Self::position(index) + Point::new(width as i32 + 1, 0),
+                    )
+                    .into_styled(PrimitiveStyle::<Rgb565>::with_stroke(Rgb565::GREEN, 3))
+                    .draw(target)
+                    .ok();
+                }
             }
             VisualStateV::Solid { color } => {
                 target
@@ -446,9 +458,9 @@ impl VisualState {
         }
     }
 
-    pub fn update_vision(&mut self, v: &Vision) {
+    pub fn update_vision(&mut self, v: &Vision, window: Option<(usize, usize)>) {
         for (i, vv) in self.values_v.iter_mut().enumerate() {
-            vv.laser(&v.lasers[i]);
+            vv.laser(&v.lasers[i], is_in_window(i, window));
         }
     }
 }

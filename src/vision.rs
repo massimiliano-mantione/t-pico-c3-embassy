@@ -113,6 +113,22 @@ impl LaserStatus {
             Self::Back
         }
     }
+
+    pub fn is_ok(self) -> bool {
+        match self {
+            LaserStatus::Back | LaserStatus::Alert => false,
+            LaserStatus::Regular | LaserStatus::Overflow => true,
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            LaserStatus::Back => "BACK",
+            LaserStatus::Alert => "ALRT",
+            LaserStatus::Regular => "REGL",
+            LaserStatus::Overflow => "OVER",
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -217,7 +233,150 @@ impl Vision {
         }
     }
 
-    pub fn compute_target(&self) -> (Angle, usize, LaserStatus) {
+    pub fn compute_target(&self) -> (Angle, usize, LaserStatus, Option<(usize, usize)>) {
+        self.compute_target_with_windows()
+    }
+
+    fn find_best_index(&self) -> usize {
+        self.lasers
+            .iter()
+            .map(|l| l.value())
+            .enumerate()
+            .fold((0usize, 0u16), |(best_i, best_v), (ci, cv)| {
+                if cv > best_v {
+                    (ci, cv)
+                } else {
+                    (best_i, best_v)
+                }
+            })
+            .0
+    }
+
+    fn find_best_extreme(&self, best_index: usize) -> Angle {
+        if best_index < LIC {
+            Angle::SLL
+        } else if best_index > LIC {
+            Angle::SRR
+        } else {
+            let (target, _, _, _) = self.compute_target_simple();
+            if target < Angle::ZERO {
+                Angle::SLL
+            } else {
+                Angle::SRR
+            }
+        }
+    }
+
+    fn find_open_window(&self, best_index: usize) -> (usize, usize) {
+        let mut left_index = best_index;
+        let mut right_index = best_index;
+        while left_index > 0 {
+            let next = left_index - 1;
+            if self.lasers[next].status.is_ok() {
+                left_index = next;
+            } else {
+                break;
+            }
+        }
+        while right_index < NUM_LASER_POSITIONS - 1 {
+            let next = right_index + 1;
+            if self.lasers[next].status.is_ok() {
+                right_index = next;
+            } else {
+                break;
+            }
+        }
+        (left_index, right_index)
+    }
+
+    pub fn sensor_angle(&self, index: usize) -> Angle {
+        match index {
+            LILL => Angle::SLL,
+            LIL => Angle::SL,
+            LIC => Angle::SC,
+            LIR => Angle::SR,
+            LIRR => Angle::SRR,
+            _ => panic!("sensor index out of bounds"),
+        }
+    }
+
+    pub fn compute_target_with_windows(
+        &self,
+    ) -> (Angle, usize, LaserStatus, Option<(usize, usize)>) {
+        let best_index = self.find_best_index();
+        let best_status = self.lasers[best_index].status;
+
+        if best_status.is_ok() {
+            let (window_left, window_right) = self.find_open_window(best_index);
+            let window = &self.lasers[window_left..=window_right];
+            let target = match window.len() {
+                1 => self.sensor_angle(best_index),
+                2 => {
+                    let weights = [window[0].value() as i32, window[1].value() as i32];
+                    interpolate(
+                        &weights,
+                        self.sensor_angle(window_left),
+                        self.sensor_angle(window_right),
+                    )
+                }
+                3 => {
+                    let weights = [
+                        window[0].value() as i32,
+                        window[1].value() as i32,
+                        window[2].value() as i32,
+                    ];
+                    interpolate(
+                        &weights,
+                        self.sensor_angle(window_left),
+                        self.sensor_angle(window_right),
+                    )
+                }
+                4 => {
+                    let weights = [
+                        window[0].value() as i32,
+                        window[1].value() as i32,
+                        window[2].value() as i32,
+                        window[3].value() as i32,
+                    ];
+                    interpolate(
+                        &weights,
+                        self.sensor_angle(window_left),
+                        self.sensor_angle(window_right),
+                    )
+                }
+                5 => {
+                    let weights = [
+                        window[0].value() as i32,
+                        window[1].value() as i32,
+                        window[2].value() as i32,
+                        window[3].value() as i32,
+                        window[4].value() as i32,
+                    ];
+                    interpolate(
+                        &weights,
+                        self.sensor_angle(window_left),
+                        self.sensor_angle(window_right),
+                    )
+                }
+                _ => panic!("window length out of bounds"),
+            };
+            (
+                target,
+                best_index,
+                best_status,
+                Some((window_left, window_right)),
+            )
+        } else {
+            (
+                self.find_best_extreme(best_index),
+                best_index,
+                best_status,
+                None,
+            )
+        }
+    }
+
+    pub fn compute_target_simple(&self) -> (Angle, usize, LaserStatus, Option<(usize, usize)>) {
         let target = interpolate(
             &[
                 self.lasers[0].value() as i32,
@@ -240,7 +399,7 @@ impl Vision {
         } else {
             LIC
         };
-        (target, index, self.lasers[index].status)
+        (target, index, self.lasers[index].status, None)
     }
 
     pub fn copy_status(&mut self, other: &Self) {
@@ -618,4 +777,11 @@ pub fn interpolate<const N: usize>(weights: &[i32; N], from: Angle, to: Angle) -
     let normalized = normalized2 / 2;
 
     normalized.into()
+}
+
+pub fn is_in_window(index: usize, borders: Option<(usize, usize)>) -> bool {
+    match borders {
+        Some((left, right)) => index >= left && index <= right,
+        None => false,
+    }
 }

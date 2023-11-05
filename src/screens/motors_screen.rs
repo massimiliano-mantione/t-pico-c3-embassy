@@ -29,7 +29,7 @@ pub async fn run(config: &RaceConfig) -> Screen {
         match select3(RAW_LASER_READINGS.wait(), IMU_DATA.wait(), CMD.wait()).await {
             Either3::First(data) => {
                 v.update(&data, &config);
-                ui.update_vision(&v);
+                ui.update_vision(&v, None);
             }
             Either3::Second(data) => {
                 steer = -(data.yaw / 100).min(35).max(-35);

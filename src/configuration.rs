@@ -6,6 +6,7 @@ use crate::{race::Angle, vision::LaserSidePosition};
 pub enum RaceConfigEntry {
     MaxSpeed,
     MinSpeed,
+    SafeAngle,
     BackSpeed,
     BackTime,
     SprintSpeed,
@@ -85,6 +86,7 @@ impl RaceConfigEntry {
         match self {
             RaceConfigEntry::MaxSpeed => "MAX SPEED",
             RaceConfigEntry::MinSpeed => "MIN SPEED",
+            RaceConfigEntry::SafeAngle => "SAFE ANGLE",
             RaceConfigEntry::BackSpeed => "BACK SPEED",
             RaceConfigEntry::BackTime => "BACK TIME",
             RaceConfigEntry::SprintSpeed => "SPRINT SPEED",
@@ -115,6 +117,7 @@ impl RaceConfigEntry {
         match self {
             RaceConfigEntry::MaxSpeed => 2000,
             RaceConfigEntry::MinSpeed => 1000,
+            RaceConfigEntry::SafeAngle => 0,
             RaceConfigEntry::BackSpeed => 2000,
             RaceConfigEntry::BackTime => 100,
             RaceConfigEntry::SprintSpeed => 2000,
@@ -145,6 +148,7 @@ impl RaceConfigEntry {
         match self {
             RaceConfigEntry::MaxSpeed => 10000,
             RaceConfigEntry::MinSpeed => 9000,
+            RaceConfigEntry::SafeAngle => 35,
             RaceConfigEntry::BackSpeed => 10000,
             RaceConfigEntry::BackTime => 1000,
             RaceConfigEntry::SprintSpeed => 10000,
@@ -175,6 +179,7 @@ impl RaceConfigEntry {
         match self {
             RaceConfigEntry::MaxSpeed => 500,
             RaceConfigEntry::MinSpeed => 500,
+            RaceConfigEntry::SafeAngle => 1,
             RaceConfigEntry::BackSpeed => 500,
             RaceConfigEntry::BackTime => 10,
             RaceConfigEntry::SprintSpeed => 500,
@@ -205,6 +210,7 @@ impl RaceConfigEntry {
         match self {
             RaceConfigEntry::MaxSpeed => None,
             RaceConfigEntry::MinSpeed => None,
+            RaceConfigEntry::SafeAngle => None,
             RaceConfigEntry::BackSpeed => None,
             RaceConfigEntry::BackTime => None,
             RaceConfigEntry::SprintSpeed => None,
@@ -240,6 +246,7 @@ impl RaceConfigEntry {
 pub struct RaceConfig {
     pub max_speed: i16,
     pub min_speed: i16,
+    pub safe_angle: i16,
     pub back_speed: i16,
     pub back_time: i16,
     pub sprint_speed: i16,
@@ -273,18 +280,19 @@ impl Default for RaceConfig {
 impl RaceConfig {
     pub const fn init() -> Self {
         Self {
-            max_speed: 2000,
-            min_speed: 1300,
+            max_speed: 2200,
+            min_speed: 1800,
+            safe_angle: 10,
             back_speed: 4000,
             back_time: 100,
             sprint_speed: 2000,
             sprint_time: 100,
-            alert_distance_center: 400,
-            alert_distance_side_30: 350,
-            alert_distance_side_60: 250,
-            back_distance_center: 90,
-            back_distance_side_30: 80,
-            back_distance_side_60: 60,
+            alert_distance_center: 300,
+            alert_distance_side_30: 200,
+            alert_distance_side_60: 150,
+            back_distance_center: 80,
+            back_distance_side_30: 60,
+            back_distance_side_60: 50,
             steer_kp_n: 5,
             steer_kp_d: 100,
             interpolation_kp_n: 130,
@@ -328,11 +336,32 @@ impl RaceConfig {
         }
     }
 
+    pub fn turn_speed(&self, steer: Angle) -> i16 {
+        let safe_angle = self.safe_angle as i32;
+        let steer = steer
+            .value()
+            .max(-Angle::MAX_STEER.value())
+            .min(Angle::MAX_STEER.value());
+        let speed_range = (self.max_speed - self.min_speed) as i32;
+        let steer_range = Angle::MAX_STEER.value() - safe_angle;
+        let steer_delta = if steer < -safe_angle {
+            -(steer + safe_angle)
+        } else if steer > safe_angle {
+            steer - safe_angle
+        } else {
+            0
+        };
+        let speed_delta = steer_delta * speed_range / steer_range;
+        let speed_delta = speed_delta as i16;
+        self.max_speed - speed_delta
+    }
+
     #[allow(unused)]
     pub fn reset(&mut self, entry: RaceConfigEntry) {
         match entry {
             RaceConfigEntry::MaxSpeed => self.max_speed = Self::init().max_speed,
             RaceConfigEntry::MinSpeed => self.min_speed = Self::init().min_speed,
+            RaceConfigEntry::SafeAngle => self.safe_angle = Self::init().safe_angle,
             RaceConfigEntry::BackSpeed => self.back_speed = Self::init().back_speed,
             RaceConfigEntry::BackTime => self.back_time = Self::init().back_time,
             RaceConfigEntry::SprintSpeed => self.sprint_speed = Self::init().sprint_speed,
@@ -383,6 +412,7 @@ impl RaceConfig {
         match entry {
             RaceConfigEntry::MaxSpeed => self.max_speed,
             RaceConfigEntry::MinSpeed => self.min_speed,
+            RaceConfigEntry::SafeAngle => self.safe_angle,
             RaceConfigEntry::BackSpeed => self.back_speed,
             RaceConfigEntry::BackTime => self.back_time,
             RaceConfigEntry::SprintSpeed => self.sprint_speed,
@@ -413,6 +443,7 @@ impl RaceConfig {
         match entry {
             RaceConfigEntry::MaxSpeed => self.max_speed = value,
             RaceConfigEntry::MinSpeed => self.min_speed = value,
+            RaceConfigEntry::SafeAngle => self.safe_angle = value,
             RaceConfigEntry::BackSpeed => self.back_speed = value,
             RaceConfigEntry::BackTime => self.back_time = value,
             RaceConfigEntry::SprintSpeed => self.sprint_speed = value,
