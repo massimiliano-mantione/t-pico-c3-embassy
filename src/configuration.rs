@@ -24,6 +24,7 @@ pub enum RaceConfigEntry {
     SlopeDistanceDelta,
     ClimbingSpeed,
     ClimbingAngle,
+    ClimbingIgnore,
     StillnessDelta,
     StillnessTime,
     InversionTime,
@@ -104,6 +105,7 @@ impl RaceConfigEntry {
             RaceConfigEntry::SlopeDistanceDelta => "SLOPE DELTA",
             RaceConfigEntry::ClimbingSpeed => "CLIMB SPD",
             RaceConfigEntry::ClimbingAngle => "CLIMB ANG",
+            RaceConfigEntry::ClimbingIgnore => "CLIMB IGN",
             RaceConfigEntry::StillnessDelta => "STILL DELTA",
             RaceConfigEntry::StillnessTime => "STILL TIME",
             RaceConfigEntry::InversionTime => "INV TIME",
@@ -135,6 +137,7 @@ impl RaceConfigEntry {
             RaceConfigEntry::SlopeDistanceDelta => 50,
             RaceConfigEntry::ClimbingSpeed => 2000,
             RaceConfigEntry::ClimbingAngle => 5,
+            RaceConfigEntry::ClimbingIgnore => 0,
             RaceConfigEntry::StillnessDelta => 0,
             RaceConfigEntry::StillnessTime => 0,
             RaceConfigEntry::InversionTime => 100,
@@ -166,6 +169,7 @@ impl RaceConfigEntry {
             RaceConfigEntry::SlopeDistanceDelta => 300,
             RaceConfigEntry::ClimbingSpeed => 10000,
             RaceConfigEntry::ClimbingAngle => 25,
+            RaceConfigEntry::ClimbingIgnore => 10,
             RaceConfigEntry::StillnessDelta => 100,
             RaceConfigEntry::StillnessTime => 100,
             RaceConfigEntry::InversionTime => 1000,
@@ -197,6 +201,7 @@ impl RaceConfigEntry {
             RaceConfigEntry::SlopeDistanceDelta => 10,
             RaceConfigEntry::ClimbingSpeed => 500,
             RaceConfigEntry::ClimbingAngle => 1,
+            RaceConfigEntry::ClimbingIgnore => 1,
             RaceConfigEntry::StillnessDelta => 1,
             RaceConfigEntry::StillnessTime => 1,
             RaceConfigEntry::InversionTime => 10,
@@ -228,6 +233,7 @@ impl RaceConfigEntry {
             RaceConfigEntry::SlopeDistanceDelta => None,
             RaceConfigEntry::ClimbingSpeed => None,
             RaceConfigEntry::ClimbingAngle => None,
+            RaceConfigEntry::ClimbingIgnore => None,
             RaceConfigEntry::StillnessDelta => None,
             RaceConfigEntry::StillnessTime => None,
             RaceConfigEntry::InversionTime => None,
@@ -264,6 +270,7 @@ pub struct RaceConfig {
     pub slope_distance_delta: i16,
     pub climbing_speed: i16,
     pub climbing_angle: i16,
+    pub climbing_ignore: i16,
     pub stillness_delta: i16,
     pub stillness_time: i16,
     pub inversion_time: i16,
@@ -280,8 +287,8 @@ impl Default for RaceConfig {
 impl RaceConfig {
     pub const fn init() -> Self {
         Self {
-            max_speed: 2200,
-            min_speed: 1800,
+            max_speed: 2500,
+            min_speed: 2200,
             safe_angle: 10,
             back_speed: 4000,
             back_time: 100,
@@ -298,8 +305,9 @@ impl RaceConfig {
             interpolation_kp_n: 130,
             interpolation_kp_d: 100,
             slope_distance_delta: 150,
-            climbing_speed: 8000,
+            climbing_speed: 4000,
             climbing_angle: 10,
+            climbing_ignore: 3,
             stillness_delta: 0,
             stillness_time: 500,
             inversion_time: 500,
@@ -329,8 +337,10 @@ impl RaceConfig {
             0
         } else {
             let boost_range = (self.climbing_speed - self.max_speed) as i32;
-            let pitch_range = self.climbing_angle as i32;
-            let pitch_delta = pitch.value().min(pitch_range);
+            let pitch_range = (self.climbing_angle - self.climbing_ignore) as i32;
+            let pitch_delta = (pitch.value() - (self.climbing_ignore as i32))
+                .min(pitch_range)
+                .max(0);
             let boost = pitch_delta * boost_range / pitch_range;
             boost.min(boost_range) as i16
         }
@@ -397,6 +407,7 @@ impl RaceConfig {
             }
             RaceConfigEntry::ClimbingSpeed => self.climbing_speed = Self::init().climbing_speed,
             RaceConfigEntry::ClimbingAngle => self.climbing_angle = Self::init().climbing_angle,
+            RaceConfigEntry::ClimbingIgnore => self.climbing_ignore = Self::init().climbing_ignore,
             RaceConfigEntry::StillnessDelta => self.stillness_delta = Self::init().stillness_delta,
             RaceConfigEntry::StillnessTime => self.stillness_time = Self::init().stillness_time,
             RaceConfigEntry::InversionTime => self.inversion_time = Self::init().inversion_time,
@@ -430,6 +441,7 @@ impl RaceConfig {
             RaceConfigEntry::SlopeDistanceDelta => self.slope_distance_delta,
             RaceConfigEntry::ClimbingSpeed => self.climbing_speed,
             RaceConfigEntry::ClimbingAngle => self.climbing_angle,
+            RaceConfigEntry::ClimbingIgnore => self.climbing_ignore,
             RaceConfigEntry::StillnessDelta => self.stillness_delta,
             RaceConfigEntry::StillnessTime => self.stillness_time,
             RaceConfigEntry::InversionTime => self.inversion_time,
@@ -461,6 +473,7 @@ impl RaceConfig {
             RaceConfigEntry::SlopeDistanceDelta => self.slope_distance_delta = value,
             RaceConfigEntry::ClimbingSpeed => self.climbing_speed = value,
             RaceConfigEntry::ClimbingAngle => self.climbing_angle = value,
+            RaceConfigEntry::ClimbingIgnore => self.climbing_ignore = value,
             RaceConfigEntry::StillnessDelta => self.stillness_delta = value,
             RaceConfigEntry::StillnessTime => self.stillness_time = value,
             RaceConfigEntry::InversionTime => self.inversion_time = value,

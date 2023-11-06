@@ -211,7 +211,6 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
     let mut main_angle = start_angle;
     let mut remaining_sprint = Some(Duration::from_millis(config.sprint_time as u64));
     let mut remaining_back_panic = None;
-    let mut is_in_back_panic = false;
     let mut cv = Vision::new();
     // let mut pv = Vision::new();
     // let mut vs = VisionStatus::new();
@@ -280,13 +279,13 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
         //     target_index
         // );
 
-        if cv.detect_back_panic(config) {
+        let is_in_back_panic = if cv.detect_back_panic(config) {
             remaining_back_panic = Some(Duration::from_millis(config.back_time as u64));
-            is_in_back_panic = true;
             //vs.clear_tracking();
+            true
         } else {
-            is_in_back_panic = false;
-        }
+            false
+        };
 
         let steer = relative_target.min(Angle::MAX_STEER).max(Angle::MIN_STEER);
 
@@ -302,9 +301,9 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
             (
                 -config.back_speed,
                 if is_in_back_panic {
-                    Angle::ZERO
-                } else {
                     -steer
+                } else {
+                    Angle::ZERO
                 },
             )
         } else if let Some(sprint) = remaining_sprint {
@@ -326,6 +325,12 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
         }
 
         let action = RaceAction { power, steer };
+
+        log::info!(
+            "RACE: power {} steer {}",
+            action.power,
+            action.steer.value()
+        );
 
         if simulate {
             // ui.values_h[1].text(match vs.tracking_side {
