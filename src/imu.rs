@@ -72,6 +72,7 @@ pub struct ImuData {
     pub vertical: i16,
     pub timestamp: Instant,
     pub dt: Duration,
+    pub stillness: Option<Duration>,
 }
 
 const DT_MIN: Duration = Duration::from_micros(100);
@@ -87,6 +88,7 @@ impl ImuData {
             vertical: 0,
             timestamp: Instant::now(),
             dt: DT_MIN,
+            stillness: None,
         }
     }
     pub fn update(&mut self, data: &Bno080RawRvcData) {
@@ -94,9 +96,16 @@ impl ImuData {
         let dt = now - self.timestamp;
         let dt = if dt.as_micros() == 0 { DT_MIN } else { dt };
 
-        self.yaw = data.yaw;
-        self.pitch = data.pitch;
-        self.roll = data.roll;
+        if self.yaw == data.yaw && self.pitch == data.pitch && self.roll == data.roll {
+            let stillness = self.stillness.unwrap_or(Duration::from_secs(0));
+            self.stillness = Some(stillness + dt);
+        } else {
+            self.yaw = data.yaw;
+            self.pitch = data.pitch;
+            self.roll = data.roll;
+            self.stillness = None;
+        }
+
         self.side = data.side;
         self.forward = data.forward;
         self.vertical = data.vertical;
