@@ -27,6 +27,7 @@ pub async fn imu_task(uart0: UART0, pin_16: PIN_16, pin_17: PIN_17) {
 
     let mut decoder = Bno080Decoder::init();
     let mut data = ImuData::init();
+    let mut stillness_detector = ImuStillnessDetector::new();
 
     loop {
         let mut buf = [0; 1];
@@ -36,7 +37,8 @@ pub async fn imu_task(uart0: UART0, pin_16: PIN_16, pin_17: PIN_17) {
                 Ok(_) => {
                     let received = buf[0];
                     if let Some(raw) = decoder.update(received) {
-                        data.update(&raw);
+                        let is_still = stillness_detector.detect_stillness(&raw);
+                        data.update(&raw, is_still);
                         IMU_DATA.signal(data);
                     }
                 }
@@ -75,6 +77,38 @@ pub struct ImuData {
     pub stillness: Option<Duration>,
 }
 
+const STILLNESS_DELTA: i16 = 100;
+
+pub struct ImuStillnessDetector {
+    pub yaw: i16,
+    pub pitch: i16,
+    pub roll: i16,
+}
+
+impl ImuStillnessDetector {
+    pub fn new() -> Self {
+        Self {
+            yaw: 0,
+            pitch: 0,
+            roll: 0,
+        }
+    }
+
+    pub fn detect_stillness(&mut self, raw: &Bno080RawRvcData) -> bool {
+        if (raw.roll - self.roll).abs() < STILLNESS_DELTA
+            && (raw.roll - self.roll).abs() < STILLNESS_DELTA
+            && (raw.roll - self.roll).abs() < STILLNESS_DELTA
+        {
+            true
+        } else {
+            self.roll = raw.roll;
+            self.pitch = raw.pitch;
+            self.yaw = raw.yaw;
+            false
+        }
+    }
+}
+
 const DT_MIN: Duration = Duration::from_micros(100);
 
 impl ImuData {
@@ -91,21 +125,21 @@ impl ImuData {
             stillness: None,
         }
     }
-    pub fn update(&mut self, data: &Bno080RawRvcData) {
+    pub fn update(&mut self, data: &Bno080RawRvcData, is_still: bool) {
         let now = Instant::now();
         let dt = now - self.timestamp;
         let dt = if dt.as_micros() == 0 { DT_MIN } else { dt };
 
-        if self.yaw == data.yaw && self.pitch == data.pitch && self.roll == data.roll {
+        if is_still {
             let stillness = self.stillness.unwrap_or(Duration::from_secs(0));
             self.stillness = Some(stillness + dt);
         } else {
-            self.yaw = data.yaw;
-            self.pitch = data.pitch;
-            self.roll = data.roll;
             self.stillness = None;
         }
 
+        self.yaw = data.yaw;
+        self.pitch = data.pitch;
+        self.roll = data.roll;
         self.side = data.side;
         self.forward = data.forward;
         self.vertical = data.vertical;
