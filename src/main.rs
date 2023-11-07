@@ -29,6 +29,7 @@ pub mod lcd;
 pub mod motors;
 pub mod race;
 pub mod screens;
+pub mod tcs3472;
 pub mod uformat;
 pub mod vision;
 
