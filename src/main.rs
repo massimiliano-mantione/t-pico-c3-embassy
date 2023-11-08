@@ -11,8 +11,8 @@ use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::i2c::{Config as I2cConfig, I2c as RpI2c, InterruptHandler as InterruptHandlerI2c};
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{
-    I2C0, PIN_0, PIN_1, PIN_16, PIN_17, PIN_2, PIN_27, PIN_28, PIN_29, PIN_3, PIN_4, PIN_5, PIN_8,
-    PIN_9, PWM_CH5, PWM_CH6, SPI0, UART0, UART1, USB,
+    I2C0, I2C1, PIN_0, PIN_1, PIN_16, PIN_17, PIN_2, PIN_27, PIN_28, PIN_29, PIN_3, PIN_4, PIN_5,
+    PIN_8, PIN_9, PWM_CH5, PWM_CH6, SPI0, UART0, UART1, USB,
 };
 use embassy_rp::uart::BufferedInterruptHandler;
 use embassy_rp::usb::{Driver, InterruptHandler as InterruptHandlerUsb};
@@ -28,6 +28,7 @@ pub mod lasers;
 pub mod lcd;
 pub mod motors;
 pub mod race;
+pub mod rgb;
 pub mod screens;
 pub mod tcs3472;
 pub mod uformat;
@@ -36,6 +37,7 @@ pub mod vision;
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandlerUsb<USB>;
     I2C0_IRQ => InterruptHandlerI2c<I2C0>;
+    I2C1_IRQ => InterruptHandlerI2c<I2C1>;
     UART0_IRQ => BufferedInterruptHandler<UART0>;
     UART1_IRQ => BufferedInterruptHandler<UART1>;
 });
@@ -46,8 +48,13 @@ async fn logger_task(driver: Driver<'static, USB>) {
 }
 
 #[embassy_executor::task]
-async fn lasers_task(i2c: lasers::I2cBus) {
+async fn lasers_task(i2c: lasers::I2cBus0) {
     lasers::lasers_task(i2c).await
+}
+
+#[embassy_executor::task]
+async fn rgb_task(i2c: rgb::I2cBus1) {
+    rgb::rgb_task(i2c).await
 }
 
 #[embassy_executor::task]
@@ -81,8 +88,8 @@ static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 
 #[embassy_executor::task]
-async fn core0_task() -> ! {
-    log::info!("Hello from core 0");
+async fn main_task() -> ! {
+    log::info!("Hello from main task (core 0)");
     loop {
         screens::run().await;
     }
@@ -102,7 +109,7 @@ async fn tft_task(
 }
 
 #[embassy_executor::task]
-async fn core1_task(
+async fn lcd_task(
     spi: SPI0,
     bl: PIN_4,
     tft_miso: PIN_0,
@@ -111,7 +118,7 @@ async fn core1_task(
     tft_cs: PIN_5,
     tft_dc: PIN_1,
 ) -> ! {
-    log::info!("Hello from core 1");
+    log::info!("Hello from lcd task (core 1)");
     lcd::tft_task(spi, bl, tft_miso, tft_mosi, tft_clk, tft_cs, tft_dc).await
 }
 
@@ -144,22 +151,32 @@ fn main() -> ! {
         let executor1 = EXECUTOR1.init(Executor::new());
         executor1.run(|spawner| {
             spawner
-                .spawn(core1_task(
+                .spawn(lcd_task(
                     spi0, bl, tft_miso, tft_mosi, tft_clk, tft_cs, tft_dc,
                 ))
                 .unwrap();
         });
     });
 
-    log::info!("set up i2c ");
+    // Block unused I2C0 pins
+    let _ = Input::new(p.PIN_21, Pull::None);
+    let _ = Input::new(p.PIN_24, Pull::None);
+
+    log::info!("set up i2c0 ");
     let mut config = I2cConfig::default();
     config.frequency = 400_000;
-    let i2c: lasers::I2cBus = RpI2c::new_async(p.I2C0, p.PIN_13, p.PIN_12, Irqs, config);
+    let i2c0: lasers::I2cBus0 = RpI2c::new_async(p.I2C0, p.PIN_13, p.PIN_12, Irqs, config);
+
+    log::info!("set up i2c1 ");
+    let mut config = I2cConfig::default();
+    config.frequency = 400_000;
+    let i2c1: rgb::I2cBus1 = RpI2c::new_async(p.I2C1, p.PIN_19, p.PIN_18, Irqs, config);
 
     let executor0 = EXECUTOR0.init(Executor::new());
     executor0.run(|spawner| {
         spawner.spawn(logger_task(driver)).unwrap();
-        spawner.spawn(lasers_task(i2c)).unwrap();
+        spawner.spawn(lasers_task(i2c0)).unwrap();
+        spawner.spawn(rgb_task(i2c1)).unwrap();
         spawner
             .spawn(imu_task(p.UART0, p.PIN_16, p.PIN_17))
             .unwrap();
@@ -174,6 +191,6 @@ fn main() -> ! {
         spawner
             .spawn(buttons_task(left_button, right_button))
             .unwrap();
-        spawner.spawn(core0_task()).unwrap();
+        spawner.spawn(main_task()).unwrap();
     });
 }

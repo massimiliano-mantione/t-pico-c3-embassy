@@ -5,7 +5,7 @@ use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant};
 use embedded_hal_async::i2c::I2c;
 
-pub type I2cBus = RpI2c<'static, I2C0, Async>;
+pub type I2cBus0 = RpI2c<'static, I2C0, Async>;
 
 pub const RAW_LASERS_COUNT: usize = 8;
 
@@ -81,7 +81,7 @@ const SHIFT: Gp2Y0E02bShift = Gp2Y0E02bShift::Cm128;
 const MEDIAN: Gp2Y0E02bMedian = Gp2Y0E02bMedian::Med5;
 const ACCUMULATION: Gp2Y0E02bAcc = Gp2Y0E02bAcc::Acc5;
 
-async fn select_i2c_channel(i2c: &mut I2cBus, chan: usize) {
+async fn select_i2c_channel(i2c: &mut I2cBus0, chan: usize) {
     match embassy_time::with_timeout(I2C_TIMEOUT, i2c.write_async(TCA9548A_ADDR, [1 << chan])).await
     {
         Ok(result) => match result {
@@ -96,7 +96,7 @@ async fn select_i2c_channel(i2c: &mut I2cBus, chan: usize) {
     }
 }
 
-async fn read_distance(i2c: &mut I2cBus) -> u16 {
+async fn read_distance(i2c: &mut I2cBus0) -> u16 {
     let mut result_buf = [0u8; 2];
     match embassy_time::with_timeout(
         I2C_TIMEOUT,
@@ -122,7 +122,7 @@ async fn read_distance(i2c: &mut I2cBus) -> u16 {
     }
 }
 
-async fn set_accumulation(i2c: &mut I2cBus, acc: Gp2Y0E02bAcc) {
+async fn set_accumulation(i2c: &mut I2cBus0, acc: Gp2Y0E02bAcc) {
     match embassy_time::with_timeout(
         I2C_TIMEOUT,
         i2c.write_async(GP2Y0E02B_ADDR, [GP2Y0E02B_ACC_REG, acc as u8]),
@@ -144,7 +144,7 @@ async fn set_accumulation(i2c: &mut I2cBus, acc: Gp2Y0E02bAcc) {
     }
 }
 
-async fn set_shift(i2c: &mut I2cBus, shift: Gp2Y0E02bShift) {
+async fn set_shift(i2c: &mut I2cBus0, shift: Gp2Y0E02bShift) {
     match embassy_time::with_timeout(
         I2C_TIMEOUT,
         i2c.write_async(GP2Y0E02B_ADDR, [GP2Y0E02B_SHIFT_REG, shift as u8]),
@@ -163,7 +163,7 @@ async fn set_shift(i2c: &mut I2cBus, shift: Gp2Y0E02bShift) {
     }
 }
 
-async fn set_median(i2c: &mut I2cBus, median: Gp2Y0E02bMedian) {
+async fn set_median(i2c: &mut I2cBus0, median: Gp2Y0E02bMedian) {
     match embassy_time::with_timeout(
         I2C_TIMEOUT,
         i2c.write_async(GP2Y0E02B_ADDR, [GP2Y0E02B_MEDIAN_REG, median as u8]),
@@ -182,7 +182,7 @@ async fn set_median(i2c: &mut I2cBus, median: Gp2Y0E02bMedian) {
     }
 }
 
-pub async fn lasers_task(mut i2c: I2cBus) {
+pub async fn lasers_task(mut i2c: I2cBus0) {
     for chan in 0..RAW_LASERS_COUNT {
         select_i2c_channel(&mut i2c, chan).await;
         set_shift(&mut i2c, SHIFT).await;
