@@ -1,3 +1,4 @@
+use crate::rgb::RgbEvent;
 use crate::uformat;
 use crate::uformat::FormattedText;
 use crate::vision::{is_in_window, LaserData, LaserStatus, Vision, LASER_OVERFLOW};
@@ -54,6 +55,11 @@ pub enum VisualStateH {
         yaw: i16,
         pitch: i16,
         roll: i16,
+    },
+    Rgb {
+        r: u8,
+        g: u8,
+        b: u8,
     },
 }
 
@@ -131,6 +137,14 @@ impl VisualStateH {
         }
     }
 
+    pub fn rgb(&mut self, data: RgbEvent) {
+        *self = Self::Rgb {
+            r: (data.r >> 8) as u8,
+            g: (data.g >> 8) as u8,
+            b: (data.b >> 8) as u8,
+        }
+    }
+
     pub fn position(index: usize) -> Point {
         Point {
             x: 0,
@@ -149,6 +163,7 @@ impl VisualStateH {
             VisualStateH::Value { .. } => false,
             VisualStateH::Gauge { .. } => false,
             VisualStateH::Imu { .. } => true,
+            VisualStateH::Rgb { .. } => false,
         }
     }
 
@@ -264,6 +279,12 @@ impl VisualStateH {
                 .into_styled(PrimitiveStyle::<Rgb565>::with_stroke(roll_color, 1))
                 .draw(target)
                 .ok();
+            }
+            VisualStateH::Rgb { r, g, b } => {
+                let color = Rgb565::new(r, g, b);
+                target
+                    .fill_solid(&Rectangle::new(Self::position(index), Self::size()), color)
+                    .ok();
             }
         }
     }
