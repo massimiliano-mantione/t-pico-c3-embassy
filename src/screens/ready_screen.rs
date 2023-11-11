@@ -36,7 +36,6 @@ pub async fn run(config: &RaceConfig) -> Screen {
             Either4::First(data) => {
                 v.update(&data, &config);
                 ui.update_vision(&v, None);
-
                 log::info!("L dt {}us", data.dt.as_micros());
             }
             Either4::Second(data) => {

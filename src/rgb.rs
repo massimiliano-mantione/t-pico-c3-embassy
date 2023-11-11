@@ -76,6 +76,7 @@ pub async fn rgb_task(i2c: I2cBus1) {
                     l: rgbc.clear,
                 });
                 last_timestamp = now;
+                embassy_time::Timer::after(Duration::from_micros(1500)).await;
             }
             Ok(Err(_)) => {
                 log::info!("RGB read error");

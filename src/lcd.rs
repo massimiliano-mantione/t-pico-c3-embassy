@@ -139,9 +139,9 @@ impl VisualStateH {
 
     pub fn rgb(&mut self, data: RgbEvent) {
         *self = Self::Rgb {
-            r: (data.r >> 8) as u8,
-            g: (data.g >> 8) as u8,
-            b: (data.b >> 8) as u8,
+            r: (data.r >> 2).min(255) as u8,
+            g: (data.g >> 2).min(255) as u8,
+            b: (data.b >> 2).min(255) as u8,
         }
     }
 
@@ -167,22 +167,35 @@ impl VisualStateH {
         }
     }
 
+    pub fn needs_clearing(&self) -> bool {
+        match self {
+            VisualStateH::Empty { .. } => true,
+            VisualStateH::Text { .. } => true,
+            VisualStateH::Value { .. } => true,
+            VisualStateH::Gauge { .. } => true,
+            VisualStateH::Imu { .. } => true,
+            VisualStateH::Rgb { .. } => false,
+        }
+    }
+
     pub fn draw(&self, index: usize, target: &mut impl DrawTarget<Color = Rgb565>) {
-        if self.needs_border() {
-            let rectangle = Rectangle::new(Self::position(index), Self::size());
-            let style = PrimitiveStyleBuilder::new()
-                .fill_color(Rgb565::BLACK)
-                .stroke_color(Rgb565::CSS_SLATE_GRAY)
-                .stroke_width(1) // > 1 is not currently supported in embedded-graphics on triangles
-                .build();
-            rectangle.draw_styled(&style, target).ok();
-        } else {
-            target
-                .fill_solid(
-                    &Rectangle::new(Self::position(index), Self::size()),
-                    Rgb565::BLACK,
-                )
-                .ok();
+        if self.needs_clearing() {
+            if self.needs_border() {
+                let rectangle = Rectangle::new(Self::position(index), Self::size());
+                let style = PrimitiveStyleBuilder::new()
+                    .fill_color(Rgb565::BLACK)
+                    .stroke_color(Rgb565::CSS_SLATE_GRAY)
+                    .stroke_width(1) // > 1 is not currently supported in embedded-graphics on triangles
+                    .build();
+                rectangle.draw_styled(&style, target).ok();
+            } else {
+                target
+                    .fill_solid(
+                        &Rectangle::new(Self::position(index), Self::size()),
+                        Rgb565::BLACK,
+                    )
+                    .ok();
+            }
         }
 
         match *self {
@@ -285,6 +298,29 @@ impl VisualStateH {
                 target
                     .fill_solid(&Rectangle::new(Self::position(index), Self::size()), color)
                     .ok();
+
+                let r3 = (r / 100) % 10;
+                let r2 = (r / 10) % 10;
+                let r1 = (r / 1) % 10;
+                let g3 = (g / 100) % 10;
+                let g2 = (g / 10) % 10;
+                let g1 = (g / 1) % 10;
+                let b3 = (b / 100) % 10;
+                let b2 = (b / 10) % 10;
+                let b1 = (b / 1) % 10;
+                let text = uformat!("{}{}{} {}{}{} {}{}{}", r3, r2, r1, g3, g2, g1, b3, b2, b1);
+                let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
+                Text::new(
+                    text.as_str(),
+                    Self::position(index)
+                        + Point {
+                            x: 2,
+                            y: VISUAL_STATE_H_HEIGHT - 5,
+                        },
+                    style,
+                )
+                .draw(target)
+                .ok();
             }
         }
     }
