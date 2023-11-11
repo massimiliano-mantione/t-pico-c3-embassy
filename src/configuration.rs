@@ -287,15 +287,15 @@ impl Default for RaceConfig {
 impl RaceConfig {
     pub const fn init() -> Self {
         Self {
-            max_speed: 3300,
-            min_speed: 2700,
+            max_speed: 3500,
+            min_speed: 3300,
             safe_angle: 10,
             back_speed: 4000,
             back_time: 100,
             sprint_speed: 2000,
             sprint_time: 100,
-            alert_distance_center: 350,
-            alert_distance_side_30: 180,
+            alert_distance_center: 380,
+            alert_distance_side_30: 190,
             alert_distance_side_60: 150,
             back_distance_center: 80,
             back_distance_side_30: 60,

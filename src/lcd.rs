@@ -75,7 +75,6 @@ impl VisualStateH {
         }
     }
 
-    #[allow(unused)]
     pub fn text_red(&mut self, text: &'static str) {
         *self = Self::Text {
             text,
@@ -83,11 +82,17 @@ impl VisualStateH {
         }
     }
 
-    #[allow(unused)]
     pub fn text_green(&mut self, text: &'static str) {
         *self = Self::Text {
             text,
             color: Rgb565::GREEN,
+        }
+    }
+
+    pub fn text_blue(&mut self, text: &'static str) {
+        *self = Self::Text {
+            text,
+            color: Rgb565::BLUE,
         }
     }
 
@@ -519,6 +524,33 @@ impl VisualState {
         for (i, vv) in self.values_v.iter_mut().enumerate() {
             vv.laser(&v.lasers[i], is_in_window(i, window));
         }
+    }
+
+    pub fn solid(&mut self, color: Rgb565) {
+        self.values_v[0].solid(color);
+        self.values_v[1].solid(color);
+        self.values_v[2].solid(color);
+        self.values_v[3].solid(color);
+        self.values_v[4].solid(color);
+    }
+
+    pub fn green(&mut self) {
+        self.solid(Rgb565::GREEN);
+    }
+    pub fn red(&mut self) {
+        self.solid(Rgb565::RED);
+    }
+    pub fn yellow(&mut self) {
+        self.solid(Rgb565::YELLOW);
+    }
+    pub fn blue(&mut self) {
+        self.solid(Rgb565::BLUE);
+    }
+    pub fn black(&mut self) {
+        self.solid(Rgb565::BLACK);
+    }
+    pub fn white(&mut self) {
+        self.solid(Rgb565::WHITE);
     }
 }
 

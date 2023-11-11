@@ -38,6 +38,17 @@ pub async fn imu_task(uart0: UART0, pin_16: PIN_16, pin_17: PIN_17) {
                     let received = buf[0];
                     if let Some(raw) = decoder.update(received) {
                         let is_still = stillness_detector.detect_stillness(&raw);
+
+                        // log::info!(
+                        //     "IMU [R {} P {} Y {}] [F {} S {} V {}]",
+                        //     raw.roll,
+                        //     raw.pitch,
+                        //     raw.yaw,
+                        //     raw.forward,
+                        //     raw.side,
+                        //     raw.vertical
+                        // );
+
                         data.update(&raw, is_still);
                         IMU_DATA.signal(data);
                     }
@@ -77,33 +88,36 @@ pub struct ImuData {
     pub stillness: Option<Duration>,
 }
 
-const STILLNESS_DELTA: i16 = 100;
+const STILLNESS_FORWARD: i16 = 1;
+const STILLNESS_SIDE: i16 = 1;
 
 pub struct ImuStillnessDetector {
-    pub yaw: i16,
-    pub pitch: i16,
-    pub roll: i16,
+    pub forward: i16,
+    pub side: i16,
 }
 
 impl ImuStillnessDetector {
     pub fn new() -> Self {
         Self {
-            yaw: 0,
-            pitch: 0,
-            roll: 0,
+            forward: 0,
+            side: 0,
         }
     }
 
     pub fn detect_stillness(&mut self, raw: &Bno080RawRvcData) -> bool {
-        if (raw.roll - self.roll).abs() < STILLNESS_DELTA
-            && (raw.roll - self.roll).abs() < STILLNESS_DELTA
-            && (raw.roll - self.roll).abs() < STILLNESS_DELTA
-        {
+        // log::info!(
+        //     "STILL (F {} {}) (S {} {})",
+        //     raw.forward,
+        //     raw.forward.abs() < STILLNESS_FORWARD,
+        //     raw.side,
+        //     raw.side.abs() < STILLNESS_SIDE
+        // );
+
+        if raw.forward.abs() < STILLNESS_FORWARD && raw.side.abs() < STILLNESS_SIDE {
             true
         } else {
-            self.roll = raw.roll;
-            self.pitch = raw.pitch;
-            self.yaw = raw.yaw;
+            self.forward = raw.forward;
+            self.side = raw.side;
             false
         }
     }
@@ -131,8 +145,8 @@ impl ImuData {
         let dt = if dt.as_micros() == 0 { DT_MIN } else { dt };
 
         if is_still {
-            let stillness = self.stillness.unwrap_or(Duration::from_secs(0));
-            self.stillness = Some(stillness + dt);
+            let since = self.stillness.unwrap_or(Duration::from_secs(0));
+            self.stillness = Some(since + dt);
         } else {
             self.stillness = None;
         }
