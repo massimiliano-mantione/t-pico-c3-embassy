@@ -305,7 +305,7 @@ impl RaceConfig {
             interpolation_kp_n: 130,
             interpolation_kp_d: 100,
             slope_distance_delta: 150,
-            climbing_speed: 4000,
+            climbing_speed: 7500,
             climbing_angle: 10,
             climbing_ignore: 3,
             stillness_delta: 0,
