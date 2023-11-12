@@ -104,12 +104,18 @@ impl Angle {
 
     pub fn from_imu_value(imu_value: i16) -> Self {
         Self {
-            value: imu_value as i32 / 100,
+            value: (imu_value as i32 / 100).min(180).max(-180),
         }
     }
 
     pub fn value(self) -> i32 {
         self.into()
+    }
+
+    pub fn abs(self) -> Self {
+        Self {
+            value: self.value.abs(),
+        }
     }
 
     pub const ZERO: Self = Self { value: 0 };
@@ -118,6 +124,9 @@ impl Angle {
     pub const BACK: Self = Self { value: 180 };
     pub const L45: Self = Self { value: -45 };
     pub const R45: Self = Self { value: 45 };
+
+    pub const R100: Self = Self { value: 100 };
+    pub const L100: Self = Self { value: -100 };
 
     pub const SMALL: Self = Self { value: 5 };
 
@@ -218,8 +227,35 @@ struct BackSteering {
 struct RouteTarget {
     pub remaining_time: Duration,
     pub go_back: bool,
+    pub was_still: bool,
     pub start: Angle,
     pub target: Angle,
+}
+
+impl RouteTarget {
+    pub fn new_for_stillness(
+        config: &RaceConfig,
+        current_heading: Angle,
+        target_delta: Angle,
+    ) -> Self {
+        Self {
+            remaining_time: Duration::from_millis(config.inversion_time as u64),
+            go_back: true,
+            was_still: true,
+            start: current_heading,
+            target: current_heading + target_delta,
+        }
+    }
+
+    pub fn new_for_climbing(config: &RaceConfig, current_heading: Angle) -> Self {
+        Self {
+            remaining_time: Duration::from_millis(config.inversion_time as u64),
+            go_back: true,
+            was_still: false,
+            start: current_heading,
+            target: config.climb_direction(),
+        }
+    }
 }
 
 pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Screen {
@@ -255,7 +291,8 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
 
     let (raw_laser_readings, imu_data) = join(RAW_LASER_READINGS.wait(), IMU_DATA.wait()).await;
     cv.update(&raw_laser_readings, &config);
-    let mut current_heading = Angle::from_imu_value(imu_data.yaw);
+    let mut absolute_heading = Angle::from_imu_value(imu_data.yaw);
+    let mut track_heading = absolute_heading - start_angle;
     let mut current_pitch = Angle::from_imu_value(imu_data.pitch);
     let mut tilt_alert = detect_tilt_alert(current_pitch, Angle::from_imu_value(imu_data.roll));
     loop {
@@ -266,7 +303,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
         let (relative_target, _target_index, mut power_state, window_borders) = cv.compute_target();
         let steer = relative_target.min(Angle::MAX_STEER).max(Angle::MIN_STEER);
 
-        let is_in_back_panic = if cv.detect_back_panic(config) {
+        let is_in_back_panic = if route_target.is_none() && cv.detect_back_panic(config) {
             remaining_back_panic = Some(BackSteering {
                 remaining_time: Duration::from_millis(config.back_time as u64),
                 steer,
@@ -285,12 +322,20 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
                     } else {
                         Angle::R45
                     };
-                    route_target = Some(RouteTarget {
-                        remaining_time: Duration::from_millis(config.inversion_time as u64),
-                        go_back: true,
-                        start: current_heading,
-                        target: current_heading + target_delta,
-                    });
+                    route_target = Some(RouteTarget::new_for_stillness(
+                        config,
+                        absolute_heading,
+                        target_delta,
+                    ));
+                }
+            }
+        }
+
+        if config.use_climb_direction() {
+            if config.detect_climb(current_pitch) {
+                let delta = (track_heading - config.climb_direction()).abs();
+                if delta > Angle::R100 {
+                    route_target = Some(RouteTarget::new_for_climbing(config, absolute_heading));
                 }
             }
         }
@@ -309,7 +354,11 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
             }
             (0, Angle::ZERO)
         } else if let Some(back_steering) = remaining_back_panic {
-            ui.red();
+            remaining_sprint = None;
+            if !simulate {
+                ui.red();
+            }
+
             remaining_back_panic = if back_steering.remaining_time > dt {
                 Some(BackSteering {
                     remaining_time: back_steering.remaining_time - dt,
@@ -327,20 +376,19 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
                     Angle::ZERO
                 },
             )
-        } else if let Some(sprint) = remaining_sprint {
-            if !simulate {
-                ui.white();
-            }
-            remaining_sprint = if sprint > dt { Some(sprint - dt) } else { None };
-            (config.sprint_speed, steer)
         } else if let Some(target) = route_target {
+            remaining_sprint = None;
             if !simulate {
-                ui.blue();
+                if target.was_still {
+                    ui.blue();
+                } else {
+                    ui.yellow();
+                }
             }
 
-            let delta = target.target - current_heading;
+            let delta = target.target - absolute_heading;
 
-            if delta.value().abs() < 5 {
+            if delta.value().abs() < 10 {
                 route_target = None;
                 (0, Angle::ZERO)
             } else {
@@ -366,6 +414,12 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
                     (config.max_speed, steer)
                 }
             }
+        } else if let Some(sprint) = remaining_sprint {
+            if !simulate {
+                ui.white();
+            }
+            remaining_sprint = if sprint > dt { Some(sprint - dt) } else { None };
+            (config.sprint_speed, steer)
         } else {
             if !simulate {
                 ui.green();
@@ -385,7 +439,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
         // );
 
         if simulate {
-            ui.values_h[1].value(current_heading.into());
+            ui.values_h[1].value(track_heading.into());
             ui.values_h[2].value(action.power);
             ui.values_h[3].steer(action.steer.into());
             ui.values_h[4].target(relative_target.into(), power_state);
@@ -400,7 +454,8 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
                 cv.update(&data, &config);
             }
             Either3::Second(imu_data) => {
-                current_heading = Angle::from_imu_value(imu_data.yaw);
+                absolute_heading = Angle::from_imu_value(imu_data.yaw);
+                track_heading = absolute_heading - start_angle;
                 current_pitch = Angle::from_imu_value(imu_data.pitch);
                 tilt_alert = detect_tilt_alert(current_pitch, Angle::from_imu_value(imu_data.roll));
             }

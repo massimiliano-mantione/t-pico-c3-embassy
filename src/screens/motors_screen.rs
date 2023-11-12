@@ -47,10 +47,8 @@ pub async fn run(config: &RaceConfig) -> Screen {
             Either3::Third(c) => {
                 log::info!("cmd: {}", c.name());
                 match c {
-                    Cmd::Previous => return Screen::RaceNow,
-                    Cmd::Next => return Screen::Race,
-                    Cmd::Plus => return Screen::Motors,
-                    Cmd::Minus => return Screen::Config,
+                    Cmd::Previous => return Screen::Simulation,
+                    Cmd::Next => return Screen::Imu,
                     _ => {}
                 }
             }

@@ -5,6 +5,7 @@ use crate::{
 };
 
 mod config_screen;
+mod imu_screen;
 mod motors_screen;
 mod race_screen;
 mod ready_screen;
@@ -17,6 +18,7 @@ pub enum Screen {
     Motors,
     Config,
     Simulation,
+    Imu,
 }
 
 async fn simulation_screen(config: &RaceConfig) -> Screen {
@@ -39,6 +41,7 @@ pub async fn run() -> ! {
             Screen::RaceNow => race_screen::run(&config, true).await,
             Screen::Motors => motors_screen::run(&config).await,
             Screen::Config => config_screen::run(&mut config).await,
+            Screen::Imu => imu_screen::run(&config).await,
             Screen::Simulation => simulation_screen(&config).await,
         }
     }

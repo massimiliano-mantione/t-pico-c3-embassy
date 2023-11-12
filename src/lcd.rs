@@ -1,3 +1,4 @@
+use crate::race::Angle;
 use crate::rgb::RgbEvent;
 use crate::uformat;
 use crate::uformat::FormattedText;
@@ -60,6 +61,11 @@ pub enum VisualStateH {
         r: u8,
         g: u8,
         b: u8,
+    },
+    ImuAngles {
+        roll: Angle,
+        pitch: Angle,
+        yaw: Angle,
     },
 }
 
@@ -150,6 +156,14 @@ impl VisualStateH {
         }
     }
 
+    pub fn imu_angles(&mut self, yaw: i16, pitch: i16, roll: i16) {
+        *self = Self::ImuAngles {
+            roll: Angle::from_imu_value(roll),
+            pitch: Angle::from_imu_value(pitch),
+            yaw: Angle::from_imu_value(yaw),
+        }
+    }
+
     pub fn position(index: usize) -> Point {
         Point {
             x: 0,
@@ -169,6 +183,7 @@ impl VisualStateH {
             VisualStateH::Gauge { .. } => false,
             VisualStateH::Imu { .. } => true,
             VisualStateH::Rgb { .. } => false,
+            VisualStateH::ImuAngles { .. } => false,
         }
     }
 
@@ -180,6 +195,7 @@ impl VisualStateH {
             VisualStateH::Gauge { .. } => true,
             VisualStateH::Imu { .. } => true,
             VisualStateH::Rgb { .. } => false,
+            VisualStateH::ImuAngles { .. } => true,
         }
     }
 
@@ -314,6 +330,51 @@ impl VisualStateH {
                 let b2 = (b / 10) % 10;
                 let b1 = (b / 1) % 10;
                 let text = uformat!("{}{}{} {}{}{} {}{}{}", r3, r2, r1, g3, g2, g1, b3, b2, b1);
+                let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
+                Text::new(
+                    text.as_str(),
+                    Self::position(index)
+                        + Point {
+                            x: 2,
+                            y: VISUAL_STATE_H_HEIGHT - 5,
+                        },
+                    style,
+                )
+                .draw(target)
+                .ok();
+            }
+            Self::ImuAngles { roll, pitch, yaw } => {
+                let (r, p, y): (i32, i32, i32) = (roll.into(), pitch.into(), yaw.into());
+                let rs = if r < 0 { "-" } else { " " };
+                let r = r.abs();
+                let r3 = (r / 100) % 10;
+                let r2 = (r / 10) % 10;
+                let r1 = (r / 1) % 10;
+                let ps = if p < 0 { "-" } else { " " };
+                let p = p.abs();
+                let p3 = (p / 100) % 10;
+                let p2 = (p / 10) % 10;
+                let p1 = (p / 1) % 10;
+                let ys = if y < 0 { "-" } else { " " };
+                let y = y.abs();
+                let y3 = (y / 100) % 10;
+                let y2 = (y / 10) % 10;
+                let y1 = (y / 1) % 10;
+                let text = uformat!(
+                    "{}{}{}{} {}{}{}{} {}{}{}{}",
+                    rs,
+                    r3,
+                    r2,
+                    r1,
+                    ps,
+                    p3,
+                    p2,
+                    p1,
+                    ys,
+                    y3,
+                    y2,
+                    y1
+                );
                 let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
                 Text::new(
                     text.as_str(),

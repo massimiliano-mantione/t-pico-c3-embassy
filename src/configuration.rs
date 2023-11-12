@@ -28,6 +28,8 @@ pub enum RaceConfigEntry {
     StillnessDelta,
     StillnessTime,
     InversionTime,
+    ClimbDirection,
+    UseClimbDirection,
     TrackSide,
     TrackSideDistance,
     End,
@@ -109,6 +111,8 @@ impl RaceConfigEntry {
             RaceConfigEntry::StillnessDelta => "STILL DELTA",
             RaceConfigEntry::StillnessTime => "STILL TIME",
             RaceConfigEntry::InversionTime => "INV TIME",
+            RaceConfigEntry::ClimbDirection => "CLIMB DIR",
+            RaceConfigEntry::UseClimbDirection => "USE CLIMB DIR",
             RaceConfigEntry::TrackSide => "TRACK SIDE",
             RaceConfigEntry::TrackSideDistance => "TRACK DIST",
             RaceConfigEntry::End => "END",
@@ -141,6 +145,8 @@ impl RaceConfigEntry {
             RaceConfigEntry::StillnessDelta => 0,
             RaceConfigEntry::StillnessTime => 0,
             RaceConfigEntry::InversionTime => 100,
+            RaceConfigEntry::ClimbDirection => -180,
+            RaceConfigEntry::UseClimbDirection => 0,
             RaceConfigEntry::TrackSide => 0,
             RaceConfigEntry::TrackSideDistance => 10,
             RaceConfigEntry::End => 0,
@@ -173,6 +179,8 @@ impl RaceConfigEntry {
             RaceConfigEntry::StillnessDelta => 100,
             RaceConfigEntry::StillnessTime => 100,
             RaceConfigEntry::InversionTime => 1000,
+            RaceConfigEntry::ClimbDirection => 180,
+            RaceConfigEntry::UseClimbDirection => 1,
             RaceConfigEntry::TrackSide => 1,
             RaceConfigEntry::TrackSideDistance => 550,
             RaceConfigEntry::End => 1,
@@ -205,6 +213,8 @@ impl RaceConfigEntry {
             RaceConfigEntry::StillnessDelta => 1,
             RaceConfigEntry::StillnessTime => 1,
             RaceConfigEntry::InversionTime => 10,
+            RaceConfigEntry::ClimbDirection => 90,
+            RaceConfigEntry::UseClimbDirection => 1,
             RaceConfigEntry::TrackSide => 1,
             RaceConfigEntry::TrackSideDistance => 10,
             RaceConfigEntry::End => 1,
@@ -237,6 +247,12 @@ impl RaceConfigEntry {
             RaceConfigEntry::StillnessDelta => None,
             RaceConfigEntry::StillnessTime => None,
             RaceConfigEntry::InversionTime => None,
+            RaceConfigEntry::ClimbDirection => None,
+            RaceConfigEntry::UseClimbDirection => match value {
+                0 => Some("NO"),
+                1 => Some("YES"),
+                _ => None,
+            },
             RaceConfigEntry::TrackSide => match value {
                 0 => Some("LEFT"),
                 1 => Some("RIGHT"),
@@ -274,6 +290,8 @@ pub struct RaceConfig {
     pub stillness_delta: i16,
     pub stillness_time: i16,
     pub inversion_time: i16,
+    pub climb_direction: i16,
+    pub use_climb_direction: i16,
     pub track_side: i16,
     pub track_side_distance: i16,
 }
@@ -305,12 +323,14 @@ impl RaceConfig {
             interpolation_kp_n: 130,
             interpolation_kp_d: 100,
             slope_distance_delta: 150,
-            climbing_speed: 7500,
-            climbing_angle: 10,
+            climbing_speed: 8000,
+            climbing_angle: 15,
             climbing_ignore: 3,
             stillness_delta: 0,
             stillness_time: 500,
             inversion_time: 500,
+            climb_direction: 0,
+            use_climb_direction: 1,
             track_side: 0,
             track_side_distance: 400,
         }
@@ -366,6 +386,19 @@ impl RaceConfig {
         self.max_speed - speed_delta
     }
 
+    pub fn detect_climb(&self, pitch: Angle) -> bool {
+        let climbing_threshold = Angle::from_imu_value(self.climbing_angle * 3 / 2);
+        pitch >= climbing_threshold
+    }
+
+    pub fn climb_direction(&self) -> Angle {
+        Angle::from_imu_value(self.climb_direction)
+    }
+
+    pub fn use_climb_direction(&self) -> bool {
+        self.use_climb_direction != 0
+    }
+
     #[allow(unused)]
     pub fn reset(&mut self, entry: RaceConfigEntry) {
         match entry {
@@ -411,6 +444,10 @@ impl RaceConfig {
             RaceConfigEntry::StillnessDelta => self.stillness_delta = Self::init().stillness_delta,
             RaceConfigEntry::StillnessTime => self.stillness_time = Self::init().stillness_time,
             RaceConfigEntry::InversionTime => self.inversion_time = Self::init().inversion_time,
+            RaceConfigEntry::ClimbDirection => self.climb_direction = Self::init().climb_direction,
+            RaceConfigEntry::UseClimbDirection => {
+                self.use_climb_direction = Self::init().use_climb_direction
+            }
             RaceConfigEntry::TrackSide => self.track_side = Self::init().track_side,
             RaceConfigEntry::TrackSideDistance => {
                 self.track_side_distance = Self::init().track_side_distance
@@ -445,6 +482,8 @@ impl RaceConfig {
             RaceConfigEntry::StillnessDelta => self.stillness_delta,
             RaceConfigEntry::StillnessTime => self.stillness_time,
             RaceConfigEntry::InversionTime => self.inversion_time,
+            RaceConfigEntry::ClimbDirection => self.climb_direction,
+            RaceConfigEntry::UseClimbDirection => self.use_climb_direction,
             RaceConfigEntry::TrackSide => self.track_side,
             RaceConfigEntry::TrackSideDistance => self.track_side_distance,
             RaceConfigEntry::End => 0,
@@ -477,6 +516,8 @@ impl RaceConfig {
             RaceConfigEntry::StillnessDelta => self.stillness_delta = value,
             RaceConfigEntry::StillnessTime => self.stillness_time = value,
             RaceConfigEntry::InversionTime => self.inversion_time = value,
+            RaceConfigEntry::ClimbDirection => self.climb_direction = value,
+            RaceConfigEntry::UseClimbDirection => self.use_climb_direction = value,
             RaceConfigEntry::TrackSide => self.track_side = value,
             RaceConfigEntry::TrackSideDistance => self.track_side_distance = value,
             RaceConfigEntry::End => {}
