@@ -36,9 +36,12 @@ pub async fn run() -> ! {
             Screen::Ready => ready_screen::run(&config).await,
             Screen::Race => {
                 race_screen::run(&config, false).await;
-                Screen::Config
+                Screen::Ready
             }
-            Screen::RaceNow => race_screen::run(&config, true).await,
+            Screen::RaceNow => {
+                race_screen::run(&config, true).await;
+                Screen::Ready
+            }
             Screen::Motors => motors_screen::run(&config).await,
             Screen::Config => config_screen::run(&mut config).await,
             Screen::Imu => imu_screen::run(&config).await,

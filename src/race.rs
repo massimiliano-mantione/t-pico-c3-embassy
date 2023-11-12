@@ -8,6 +8,7 @@ use crate::lasers::RAW_LASER_READINGS;
 use crate::lcd::VISUAL_STATE;
 use crate::motors::motors_go;
 use crate::screens::Screen;
+use crate::trace::{TraceCommand, TraceEvent, TRACE};
 use crate::vision::LaserStatus;
 use crate::{configuration::RaceConfig, lcd::VisualState, vision::Vision};
 
@@ -218,13 +219,13 @@ fn detect_tilt_alert(pitch: Angle, roll: Angle) -> bool {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct BackSteering {
+pub struct BackSteering {
     pub remaining_time: Duration,
     pub steer: Angle,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct RouteTarget {
+pub struct RouteTarget {
     pub remaining_time: Duration,
     pub go_back: bool,
     pub was_still: bool,
@@ -289,12 +290,14 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
     }
     VISUAL_STATE.signal(ui);
 
-    let (raw_laser_readings, imu_data) = join(RAW_LASER_READINGS.wait(), IMU_DATA.wait()).await;
+    let (raw_laser_readings, mut current_imu_data) =
+        join(RAW_LASER_READINGS.wait(), IMU_DATA.wait()).await;
     cv.update(&raw_laser_readings, &config);
-    let mut absolute_heading = Angle::from_imu_value(imu_data.yaw);
+    let mut absolute_heading = Angle::from_imu_value(current_imu_data.yaw);
     let mut track_heading = absolute_heading - start_angle;
-    let mut current_pitch = Angle::from_imu_value(imu_data.pitch);
-    let mut tilt_alert = detect_tilt_alert(current_pitch, Angle::from_imu_value(imu_data.roll));
+    let mut current_pitch = Angle::from_imu_value(current_imu_data.pitch);
+    let mut tilt_alert =
+        detect_tilt_alert(current_pitch, Angle::from_imu_value(current_imu_data.roll));
     loop {
         let now = Instant::now();
         let dt = (now - last_timestamp).max(Duration::from_micros(100));
@@ -314,7 +317,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
         };
 
         if route_target.is_none() && remaining_sprint.is_none() && !simulate {
-            if let Some(stillness) = imu_data.stillness {
+            if let Some(stillness) = current_imu_data.stillness {
                 if stillness.as_millis() as i16 >= config.stillness_time {
                     ui.blue();
                     let target_delta = if steer < Angle::ZERO {
@@ -341,7 +344,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
         }
 
         if simulate {
-            if imu_data.stillness.is_some() {
+            if current_imu_data.stillness.is_some() {
                 ui.values_h[0].text_blue("SYM");
             } else {
                 ui.values_h[0].text_green("SYM");
@@ -438,12 +441,29 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
         //     action.steer.value()
         // );
 
+        // absolute_heading,
+        // track_heading,
+        // steer: action.steer.into(),
+        // speed: action.power,
+
         if simulate {
             ui.values_h[1].value(track_heading.into());
             ui.values_h[2].value(action.power);
             ui.values_h[3].steer(action.steer.into());
             ui.values_h[4].target(relative_target.into(), power_state);
             ui.update_vision(&cv, window_borders);
+        } else {
+            TRACE.signal(TraceCommand::Push(TraceEvent::new(
+                absolute_heading,
+                track_heading,
+                &current_imu_data,
+                is_in_back_panic,
+                &remaining_back_panic,
+                &route_target,
+                action.steer.into(),
+                action.power,
+                dt,
+            )));
         }
         VISUAL_STATE.signal(ui);
 
@@ -458,14 +478,30 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
                 track_heading = absolute_heading - start_angle;
                 current_pitch = Angle::from_imu_value(imu_data.pitch);
                 tilt_alert = detect_tilt_alert(current_pitch, Angle::from_imu_value(imu_data.roll));
+                current_imu_data = imu_data;
             }
             Either3::Third(cmd) => {
-                let next_screen = match cmd {
-                    Cmd::Previous | Cmd::Minus => Screen::Ready,
-                    Cmd::Next | Cmd::Plus => Screen::Motors,
-                    Cmd::Ok | Cmd::Exit => Screen::Config,
-                };
-                return next_screen;
+                if simulate {
+                    match cmd {
+                        Cmd::Previous => {
+                            return Screen::Ready;
+                        }
+                        Cmd::Next => {
+                            return Screen::Motors;
+                        }
+                        Cmd::Plus => {
+                            TRACE.signal(TraceCommand::Print);
+                        }
+                        Cmd::Minus => {
+                            TRACE.signal(TraceCommand::Clear);
+                        }
+                        Cmd::Ok | Cmd::Exit => {
+                            return Screen::Config;
+                        }
+                    }
+                } else {
+                    return Screen::Ready;
+                }
             }
         }
     }

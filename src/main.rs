@@ -31,6 +31,7 @@ pub mod race;
 pub mod rgb;
 pub mod screens;
 pub mod tcs3472;
+pub mod trace;
 pub mod uformat;
 pub mod vision;
 
@@ -65,6 +66,11 @@ async fn imu_task(uart0: UART0, pin_16: PIN_16, pin_17: PIN_17) {
 #[embassy_executor::task]
 async fn esp32c3_task(uart1: UART1, pin_8: PIN_8, pin_9: PIN_9) {
     esp32c3::esp32c3_task(uart1, pin_8, pin_9).await
+}
+
+#[embassy_executor::task]
+async fn trace_task() {
+    trace::trace_task().await
 }
 
 #[embassy_executor::task]
@@ -183,6 +189,7 @@ fn main() -> ! {
         // spawner
         //     .spawn(esp32c3_task(p.UART1, p.PIN_8, p.PIN_9))
         //     .unwrap();
+        spawner.spawn(trace_task()).unwrap();
         spawner
             .spawn(motors_task(
                 p.PWM_CH6, p.PWM_CH5, p.PIN_27, p.PIN_28, p.PIN_29,
