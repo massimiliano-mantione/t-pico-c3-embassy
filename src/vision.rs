@@ -157,11 +157,12 @@ impl LaserData {
         }
     }
 
-    pub fn update(&mut self, raw_readings: &RawLaserReadings, config: &RaceConfig) {
+    pub fn update(&mut self, raw_readings: &RawLaserReadings, config: &RaceConfig, pitch: Angle) {
         let lower = raw_readings.values[self.position.physical_index(self.sign, false)];
         let upper = raw_readings.values[self.position.physical_index(self.sign, true)];
         let slope_delta = config.slope_distance_delta as u16;
-        let slope = upper <= (lower + slope_delta) && upper >= (lower + slope_delta / 2);
+        let slope = (upper <= (lower + slope_delta) && upper >= (lower + slope_delta / 2))
+            || (config.detect_downhill(pitch) && upper >= (lower + slope_delta / 2));
         self.lower = lower;
         self.upper = upper;
         self.slope = slope;
@@ -223,9 +224,9 @@ impl Vision {
         }
     }
 
-    pub fn update(&mut self, raw_readings: &RawLaserReadings, config: &RaceConfig) {
+    pub fn update(&mut self, raw_readings: &RawLaserReadings, config: &RaceConfig, pitch: Angle) {
         for laser in self.lasers.iter_mut() {
-            laser.update(raw_readings, config);
+            laser.update(raw_readings, config, pitch);
         }
     }
 

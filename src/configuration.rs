@@ -387,12 +387,17 @@ impl RaceConfig {
     }
 
     pub fn detect_climb(&self, pitch: Angle) -> bool {
-        let climbing_threshold = Angle::from_imu_value(self.climbing_angle * 3 / 2);
+        let climbing_threshold: Angle = (self.climbing_angle as i32 * 2 / 3).into();
         pitch >= climbing_threshold
     }
 
+    pub fn detect_downhill(&self, pitch: Angle) -> bool {
+        let climbing_threshold: Angle = (self.climbing_angle as i32 * 2 / 3).into();
+        pitch <= -climbing_threshold
+    }
+
     pub fn climb_direction(&self) -> Angle {
-        Angle::from_imu_value(self.climb_direction)
+        (self.climb_direction as i32).into()
     }
 
     pub fn use_climb_direction(&self) -> bool {

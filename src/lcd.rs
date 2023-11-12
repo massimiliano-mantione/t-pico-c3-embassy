@@ -56,6 +56,8 @@ pub enum VisualStateH {
         yaw: i16,
         pitch: i16,
         roll: i16,
+        climb: bool,
+        downhill: bool,
     },
     Rgb {
         r: u8,
@@ -130,8 +132,14 @@ impl VisualStateH {
         }
     }
 
-    pub fn imu(&mut self, yaw: i16, pitch: i16, roll: i16) {
-        *self = Self::Imu { yaw, pitch, roll }
+    pub fn imu(&mut self, yaw: i16, pitch: i16, roll: i16, climb: bool, downhill: bool) {
+        *self = Self::Imu {
+            yaw,
+            pitch,
+            roll,
+            climb,
+            downhill,
+        }
     }
 
     #[allow(unused)]
@@ -261,7 +269,13 @@ impl VisualStateH {
                 .draw(target)
                 .ok();
             }
-            VisualStateH::Imu { yaw, pitch, roll } => {
+            VisualStateH::Imu {
+                yaw,
+                pitch,
+                roll,
+                climb,
+                downhill,
+            } => {
                 let center_x = VISUAL_STATE_H_WIDTH / 2;
                 let center_y = VISUAL_STATE_H_HEIGHT / 2;
 
@@ -278,7 +292,16 @@ impl VisualStateH {
                 let (pitch_delta, pitch_color) = if pitch < -90 {
                     (pitch + 180, Rgb565::RED)
                 } else if pitch < 90 {
-                    (pitch, Rgb565::BLUE)
+                    (
+                        pitch,
+                        if climb {
+                            Rgb565::YELLOW
+                        } else if downhill {
+                            Rgb565::GREEN
+                        } else {
+                            Rgb565::BLUE
+                        },
+                    )
                 } else {
                     (180 - pitch, Rgb565::RED)
                 };

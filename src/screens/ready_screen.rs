@@ -7,6 +7,7 @@ use crate::{
     lasers::RAW_LASER_READINGS,
     lcd::{VisualState, VISUAL_STATE},
     motors::motors_stop,
+    race::Angle,
     rgb::RGB,
     vision::Vision,
 };
@@ -16,6 +17,7 @@ use super::Screen;
 pub async fn run(config: &RaceConfig) -> Screen {
     let mut ui = VisualState::init();
     let mut v = Vision::new();
+    let mut current_pitch = Angle::ZERO;
 
     motors_stop();
 
@@ -34,13 +36,20 @@ pub async fn run(config: &RaceConfig) -> Screen {
         .await
         {
             Either4::First(data) => {
-                v.update(&data, &config);
-                ui.update_vision(&v, None);
                 log::info!("L dt {}us", data.dt.as_micros());
+                v.update(&data, &config, current_pitch);
+                ui.update_vision(&v, None);
             }
             Either4::Second(data) => {
                 log::info!("IMU dt {}us", data.dt.as_micros());
-                ui.values_h[4].imu(data.yaw, data.pitch, data.roll);
+                current_pitch = Angle::from_imu_value(data.pitch);
+                ui.values_h[4].imu(
+                    data.yaw,
+                    data.pitch,
+                    data.roll,
+                    config.detect_climb(current_pitch),
+                    config.detect_downhill(current_pitch),
+                );
             }
             Either4::Third(c) => {
                 log::info!("cmd: {}", c.name());

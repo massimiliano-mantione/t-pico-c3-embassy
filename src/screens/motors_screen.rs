@@ -7,6 +7,7 @@ use crate::{
     lasers::RAW_LASER_READINGS,
     lcd::{VisualState, VISUAL_STATE},
     motors::motors_go,
+    race::Angle,
     vision::Vision,
 };
 
@@ -24,14 +25,16 @@ pub async fn run(config: &RaceConfig) -> Screen {
 
     let mut steer = 0;
     let mut power = 0;
+    let mut current_pitch = Angle::ZERO;
 
     loop {
         match select3(RAW_LASER_READINGS.wait(), IMU_DATA.wait(), CMD.wait()).await {
             Either3::First(data) => {
-                v.update(&data, &config);
+                v.update(&data, &config, current_pitch);
                 ui.update_vision(&v, None);
             }
             Either3::Second(data) => {
+                current_pitch = Angle::from_imu_value(data.pitch);
                 steer = -(data.yaw / 100).min(35).max(-35);
                 let pitch = (data.pitch as i32 / 100).min(90).max(-90);
                 power = if pitch > 10 {

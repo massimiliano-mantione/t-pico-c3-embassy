@@ -130,7 +130,7 @@ const EMPTY_EVENT: TraceEvent = TraceEvent {
     dt_us: 0,
 };
 
-const TRACE_EVENTS: usize = 2000;
+const TRACE_EVENTS: usize = 3000;
 
 struct TraceData {
     pub start: usize,
@@ -159,7 +159,7 @@ impl TraceData {
         let mut elapsed = Duration::from_millis(0);
         loop {
             self.events[current].print(current, elapsed);
-            embassy_time::Timer::after(Duration::from_millis(20)).await;
+            embassy_time::Timer::after(Duration::from_millis(16)).await;
             elapsed += Duration::from_micros(self.events[current].dt_us as u64);
             current = (current + 1) % TRACE_EVENTS;
             if current == self.end {

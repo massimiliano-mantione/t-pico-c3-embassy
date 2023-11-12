@@ -6,7 +6,7 @@ use crate::cmd::{Cmd, CMD};
 use crate::imu::IMU_DATA;
 use crate::lasers::RAW_LASER_READINGS;
 use crate::lcd::VISUAL_STATE;
-use crate::motors::motors_go;
+use crate::motors::{motors_go, motors_stop};
 use crate::screens::Screen;
 use crate::trace::{TraceCommand, TraceEvent, TRACE};
 use crate::vision::LaserStatus;
@@ -292,12 +292,12 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
 
     let (raw_laser_readings, mut current_imu_data) =
         join(RAW_LASER_READINGS.wait(), IMU_DATA.wait()).await;
-    cv.update(&raw_laser_readings, &config);
     let mut absolute_heading = Angle::from_imu_value(current_imu_data.yaw);
     let mut track_heading = absolute_heading - start_angle;
     let mut current_pitch = Angle::from_imu_value(current_imu_data.pitch);
     let mut tilt_alert =
         detect_tilt_alert(current_pitch, Angle::from_imu_value(current_imu_data.roll));
+    cv.update(&raw_laser_readings, &config, current_pitch);
     loop {
         let now = Instant::now();
         let dt = (now - last_timestamp).max(Duration::from_micros(100));
@@ -316,29 +316,32 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
             false
         };
 
-        if route_target.is_none() && remaining_sprint.is_none() && !simulate {
-            if let Some(stillness) = current_imu_data.stillness {
-                if stillness.as_millis() as i16 >= config.stillness_time {
-                    ui.blue();
-                    let target_delta = if steer < Angle::ZERO {
-                        Angle::L45
-                    } else {
-                        Angle::R45
-                    };
-                    route_target = Some(RouteTarget::new_for_stillness(
-                        config,
-                        absolute_heading,
-                        target_delta,
-                    ));
+        if route_target.is_none() {
+            if remaining_sprint.is_none() && !simulate {
+                if let Some(stillness) = current_imu_data.stillness {
+                    if stillness.as_millis() as i16 >= config.stillness_time {
+                        ui.blue();
+                        let target_delta = if steer < Angle::ZERO {
+                            Angle::L45
+                        } else {
+                            Angle::R45
+                        };
+                        route_target = Some(RouteTarget::new_for_stillness(
+                            config,
+                            absolute_heading,
+                            target_delta,
+                        ));
+                    }
                 }
             }
-        }
 
-        if config.use_climb_direction() {
-            if config.detect_climb(current_pitch) {
-                let delta = (track_heading - config.climb_direction()).abs();
-                if delta > Angle::R100 {
-                    route_target = Some(RouteTarget::new_for_climbing(config, absolute_heading));
+            if config.use_climb_direction() {
+                if config.detect_climb(current_pitch) {
+                    let delta = (track_heading - config.climb_direction()).abs();
+                    if delta > Angle::R100 {
+                        route_target =
+                            Some(RouteTarget::new_for_climbing(config, absolute_heading));
+                    }
                 }
             }
         }
@@ -412,7 +415,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
                 route_target = Some(new_target);
 
                 if new_target.go_back {
-                    (config.back_speed, -steer)
+                    (-config.back_speed, -steer)
                 } else {
                     (config.max_speed, steer)
                 }
@@ -467,11 +470,15 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
         }
         VISUAL_STATE.signal(ui);
 
-        motors_go(if simulate { 0 } else { action.power }, action.steer.into());
+        if simulate {
+            motors_stop();
+        } else {
+            motors_go(action.power, action.steer.into());
+        }
 
         match select3(RAW_LASER_READINGS.wait(), IMU_DATA.wait(), CMD.wait()).await {
             Either3::First(data) => {
-                cv.update(&data, &config);
+                cv.update(&data, &config, current_pitch);
             }
             Either3::Second(imu_data) => {
                 absolute_heading = Angle::from_imu_value(imu_data.yaw);
