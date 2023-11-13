@@ -1,5 +1,5 @@
-use embassy_futures::join::join;
-use embassy_futures::select::{select3, Either3};
+use embassy_futures::join::join3;
+use embassy_futures::select::{select4, Either4};
 use embassy_time::{Duration, Instant};
 
 use crate::cmd::{Cmd, CMD};
@@ -7,6 +7,7 @@ use crate::imu::IMU_DATA;
 use crate::lasers::RAW_LASER_READINGS;
 use crate::lcd::VISUAL_STATE;
 use crate::motors::{motors_go, motors_stop};
+use crate::rgb::RGB;
 use crate::screens::Screen;
 use crate::trace::{TraceCommand, TraceEvent, TRACE};
 use crate::vision::LaserStatus;
@@ -125,6 +126,8 @@ impl Angle {
     pub const BACK: Self = Self { value: 180 };
     pub const L45: Self = Self { value: -45 };
     pub const R45: Self = Self { value: 45 };
+    pub const R170: Self = Self { value: 170 };
+    pub const L170: Self = Self { value: -170 };
 
     pub const R100: Self = Self { value: 100 };
     pub const L100: Self = Self { value: -100 };
@@ -248,6 +251,21 @@ impl RouteTarget {
         }
     }
 
+    pub fn new_for_inversion(config: &RaceConfig, current_heading: Angle, steer: Angle) -> Self {
+        Self {
+            remaining_time: Duration::from_millis(config.inversion_time as u64),
+            go_back: true,
+            was_still: false,
+            start: current_heading,
+            target: current_heading
+                + if steer > Angle::ZERO {
+                    Angle::R170
+                } else {
+                    Angle::L170
+                },
+        }
+    }
+
     pub fn new_for_climbing(config: &RaceConfig, current_heading: Angle) -> Self {
         Self {
             remaining_time: Duration::from_millis(config.inversion_time as u64),
@@ -265,6 +283,10 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
     let mut remaining_back_panic = None;
     let mut route_target = None;
     let mut cv = Vision::new();
+    let mut action = RaceAction {
+        power: 0,
+        steer: Angle::ZERO,
+    };
 
     let mut ui = VisualState::init();
 
@@ -290,8 +312,8 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
     }
     VISUAL_STATE.signal(ui);
 
-    let (raw_laser_readings, mut current_imu_data) =
-        join(RAW_LASER_READINGS.wait(), IMU_DATA.wait()).await;
+    let (raw_laser_readings, mut current_imu_data, mut rgb_data) =
+        join3(RAW_LASER_READINGS.wait(), IMU_DATA.wait(), RGB.wait()).await;
     let mut stillness_time = None;
     let mut absolute_heading = Angle::from_imu_value(current_imu_data.yaw);
     let mut track_heading = absolute_heading - start_angle;
@@ -340,6 +362,16 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
                     if delta > Angle::R100 {
                         route_target = Some(RouteTarget::new_for_climbing(config, track_heading));
                     }
+                }
+            }
+
+            if rgb_data.is_green() {
+                if rgb_data.not_red_for < Duration::from_millis(50) {
+                    route_target = Some(RouteTarget::new_for_inversion(
+                        config,
+                        track_heading,
+                        action.steer,
+                    ));
                 }
             }
         }
@@ -434,7 +466,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
             )
         };
 
-        let action = RaceAction { power, steer };
+        action = RaceAction { power, steer };
 
         // log::info!(
         //     "RACE: power {} steer {}",
@@ -474,11 +506,18 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
             motors_go(action.power, action.steer.into());
         }
 
-        match select3(RAW_LASER_READINGS.wait(), IMU_DATA.wait(), CMD.wait()).await {
-            Either3::First(data) => {
+        match select4(
+            RAW_LASER_READINGS.wait(),
+            IMU_DATA.wait(),
+            RGB.wait(),
+            CMD.wait(),
+        )
+        .await
+        {
+            Either4::First(data) => {
                 cv.update(&data, &config, current_pitch);
             }
-            Either3::Second(imu_data) => {
+            Either4::Second(imu_data) => {
                 stillness_time = imu_data.stillness;
                 absolute_heading = Angle::from_imu_value(imu_data.yaw);
                 track_heading = absolute_heading - start_angle;
@@ -486,7 +525,10 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
                 tilt_alert = detect_tilt_alert(current_pitch, Angle::from_imu_value(imu_data.roll));
                 current_imu_data = imu_data;
             }
-            Either3::Third(cmd) => {
+            Either4::Third(data) => {
+                rgb_data = data;
+            }
+            Either4::Fourth(cmd) => {
                 if simulate {
                     match cmd {
                         Cmd::Previous => {
