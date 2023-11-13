@@ -41,7 +41,7 @@ pub async fn run(config: &RaceConfig) -> Screen {
                 log::info!("cmd: {}", c.name());
                 match c {
                     Cmd::Previous => return Screen::Motors,
-                    Cmd::Next => return Screen::Ready,
+                    Cmd::Next => return Screen::Rgb,
                     _ => {}
                 }
             }

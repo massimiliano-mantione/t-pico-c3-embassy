@@ -9,6 +9,7 @@ mod imu_screen;
 mod motors_screen;
 mod race_screen;
 mod ready_screen;
+mod rgb_screen;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
@@ -19,6 +20,7 @@ pub enum Screen {
     Config,
     Simulation,
     Imu,
+    Rgb,
 }
 
 async fn simulation_screen(config: &RaceConfig) -> Screen {
@@ -45,6 +47,7 @@ pub async fn run() -> ! {
             Screen::Motors => motors_screen::run(&config).await,
             Screen::Config => config_screen::run(&mut config).await,
             Screen::Imu => imu_screen::run(&config).await,
+            Screen::Rgb => rgb_screen::run().await,
             Screen::Simulation => simulation_screen(&config).await,
         }
     }

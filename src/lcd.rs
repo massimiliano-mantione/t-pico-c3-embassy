@@ -46,6 +46,11 @@ pub enum VisualStateH {
         value: i16,
         color: Rgb565,
     },
+    Value2 {
+        value1: i16,
+        value2: i16,
+        color: Rgb565,
+    },
     #[allow(unused)]
     Gauge {
         value: i16,
@@ -108,6 +113,30 @@ impl VisualStateH {
         *self = Self::Value {
             value,
             color: Rgb565::WHITE,
+        }
+    }
+
+    pub fn value2_red(&mut self, value1: i16, value2: i16) {
+        *self = Self::Value2 {
+            value1,
+            value2,
+            color: Rgb565::RED,
+        }
+    }
+
+    pub fn value2_green(&mut self, value1: i16, value2: i16) {
+        *self = Self::Value2 {
+            value1,
+            value2,
+            color: Rgb565::GREEN,
+        }
+    }
+
+    pub fn value2_blue(&mut self, value1: i16, value2: i16) {
+        *self = Self::Value2 {
+            value1,
+            value2,
+            color: Rgb565::BLUE,
         }
     }
 
@@ -188,6 +217,7 @@ impl VisualStateH {
             VisualStateH::Empty { .. } => false,
             VisualStateH::Text { .. } => false,
             VisualStateH::Value { .. } => false,
+            VisualStateH::Value2 { .. } => false,
             VisualStateH::Gauge { .. } => false,
             VisualStateH::Imu { .. } => true,
             VisualStateH::Rgb { .. } => false,
@@ -200,6 +230,7 @@ impl VisualStateH {
             VisualStateH::Empty { .. } => true,
             VisualStateH::Text { .. } => true,
             VisualStateH::Value { .. } => true,
+            VisualStateH::Value2 { .. } => true,
             VisualStateH::Gauge { .. } => true,
             VisualStateH::Imu { .. } => true,
             VisualStateH::Rgb { .. } => false,
@@ -245,6 +276,25 @@ impl VisualStateH {
             }
             VisualStateH::Value { value, color } => {
                 let text = uformat!("{}", value);
+                let style = MonoTextStyle::new(&FONT_10X20, color);
+                Text::new(
+                    text.as_str(),
+                    Self::position(index)
+                        + Point {
+                            x: 2,
+                            y: VISUAL_STATE_H_HEIGHT - 5,
+                        },
+                    style,
+                )
+                .draw(target)
+                .ok();
+            }
+            VisualStateH::Value2 {
+                value1,
+                value2,
+                color,
+            } => {
+                let text = uformat!("{} {}", value1, value2);
                 let style = MonoTextStyle::new(&FONT_10X20, color);
                 Text::new(
                     text.as_str(),
@@ -483,6 +533,10 @@ impl VisualStateV {
 
     pub fn yellow(&mut self) {
         self.solid(Rgb565::YELLOW)
+    }
+
+    pub fn black(&mut self) {
+        self.solid(Rgb565::BLACK)
     }
 
     pub fn position(index: usize) -> Point {
