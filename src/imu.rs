@@ -88,35 +88,21 @@ pub struct ImuData {
     pub stillness: Option<Duration>,
 }
 
-const STILLNESS_FORWARD: i16 = 1;
-const STILLNESS_SIDE: i16 = 1;
+const STILLNESS_SIDE: i16 = 200;
 
 pub struct ImuStillnessDetector {
-    pub forward: i16,
     pub side: i16,
 }
 
 impl ImuStillnessDetector {
     pub fn new() -> Self {
-        Self {
-            forward: 0,
-            side: 0,
-        }
+        Self { side: 0 }
     }
 
     pub fn detect_stillness(&mut self, raw: &Bno080RawRvcData) -> bool {
-        // log::info!(
-        //     "STILL (F {} {}) (S {} {})",
-        //     raw.forward,
-        //     raw.forward.abs() < STILLNESS_FORWARD,
-        //     raw.side,
-        //     raw.side.abs() < STILLNESS_SIDE
-        // );
-
-        if raw.forward.abs() < STILLNESS_FORWARD && raw.side.abs() < STILLNESS_SIDE {
+        if raw.side.abs() < STILLNESS_SIDE {
             true
         } else {
-            self.forward = raw.forward;
             self.side = raw.side;
             false
         }
@@ -139,6 +125,7 @@ impl ImuData {
             stillness: None,
         }
     }
+
     pub fn update(&mut self, data: &Bno080RawRvcData, is_still: bool) {
         let now = Instant::now();
         let dt = now - self.timestamp;

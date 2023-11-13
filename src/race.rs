@@ -292,6 +292,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
 
     let (raw_laser_readings, mut current_imu_data) =
         join(RAW_LASER_READINGS.wait(), IMU_DATA.wait()).await;
+    let mut stillness_time = None;
     let mut absolute_heading = Angle::from_imu_value(current_imu_data.yaw);
     let mut track_heading = absolute_heading - start_angle;
     let mut current_pitch = Angle::from_imu_value(current_imu_data.pitch);
@@ -318,20 +319,18 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
 
         if route_target.is_none() {
             if remaining_sprint.is_none() && !simulate {
-                if let Some(stillness) = current_imu_data.stillness {
-                    if stillness.as_millis() as i16 >= config.stillness_time {
-                        ui.blue();
-                        let target_delta = if steer < Angle::ZERO {
-                            Angle::L45
-                        } else {
-                            Angle::R45
-                        };
-                        route_target = Some(RouteTarget::new_for_stillness(
-                            config,
-                            absolute_heading,
-                            target_delta,
-                        ));
-                    }
+                if config.detect_stillness(stillness_time) {
+                    ui.blue();
+                    let target_delta = if steer < Angle::ZERO {
+                        Angle::L45
+                    } else {
+                        Angle::R45
+                    };
+                    route_target = Some(RouteTarget::new_for_stillness(
+                        config,
+                        track_heading,
+                        target_delta,
+                    ));
                 }
             }
 
@@ -339,8 +338,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
                 if config.detect_climb(current_pitch) {
                     let delta = (track_heading - config.climb_direction()).abs();
                     if delta > Angle::R100 {
-                        route_target =
-                            Some(RouteTarget::new_for_climbing(config, absolute_heading));
+                        route_target = Some(RouteTarget::new_for_climbing(config, track_heading));
                     }
                 }
             }
@@ -392,7 +390,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
                 }
             }
 
-            let delta = target.target - absolute_heading;
+            let delta = target.target - track_heading;
 
             if delta.value().abs() < 10 {
                 route_target = None;
@@ -481,6 +479,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
                 cv.update(&data, &config, current_pitch);
             }
             Either3::Second(imu_data) => {
+                stillness_time = imu_data.stillness;
                 absolute_heading = Angle::from_imu_value(imu_data.yaw);
                 track_heading = absolute_heading - start_angle;
                 current_pitch = Angle::from_imu_value(imu_data.pitch);
