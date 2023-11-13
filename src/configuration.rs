@@ -1,3 +1,5 @@
+use embassy_time::Duration;
+
 use crate::{race::Angle, vision::LaserSidePosition};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -305,12 +307,12 @@ impl Default for RaceConfig {
 impl RaceConfig {
     pub const fn init() -> Self {
         Self {
-            max_speed: 3500,
-            min_speed: 3300,
+            max_speed: 3900,
+            min_speed: 3600,
             safe_angle: 10,
-            back_speed: 4000,
+            back_speed: 5000,
             back_time: 100,
-            sprint_speed: 2000,
+            sprint_speed: 6000,
             sprint_time: 100,
             alert_distance_center: 380,
             alert_distance_side_30: 190,
@@ -328,7 +330,7 @@ impl RaceConfig {
             climbing_ignore: 3,
             stillness_delta: 0,
             stillness_time: 500,
-            inversion_time: 500,
+            inversion_time: 750,
             climb_direction: 0,
             use_climb_direction: 1,
             track_side: 0,
@@ -394,6 +396,12 @@ impl RaceConfig {
     pub fn detect_downhill(&self, pitch: Angle) -> bool {
         let climbing_threshold: Angle = (self.climbing_angle as i32 * 2 / 3).into();
         pitch <= -climbing_threshold
+    }
+
+    pub fn detect_stillness(&self, stillness_time: Option<Duration>) -> bool {
+        stillness_time
+            .map(|time| time >= Duration::from_millis(self.stillness_time as u64))
+            .unwrap_or(false)
     }
 
     pub fn climb_direction(&self) -> Angle {
