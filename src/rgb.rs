@@ -69,6 +69,8 @@ const GREEN: RgbRanges = RgbRanges {
     b_max: 110,
 };
 
+const MAX_DURATION: Duration = Duration::from_secs(60);
+
 pub static RGB: Signal<CriticalSectionRawMutex, RgbEvent> = Signal::new();
 
 pub async fn rgb_task(i2c: I2cBus1) {
@@ -107,8 +109,8 @@ pub async fn rgb_task(i2c: I2cBus1) {
     }
 
     let mut last_timestamp = Instant::now();
-    let mut not_red_for = Duration::from_secs(60);
-    let mut not_green_for = Duration::from_secs(60);
+    let mut not_red_for = MAX_DURATION;
+    let mut not_green_for = MAX_DURATION;
 
     loop {
         match with_timeout(Duration::from_secs(5), tcs3472.read_all_channels_async()).await {
@@ -119,12 +121,12 @@ pub async fn rgb_task(i2c: I2cBus1) {
                 not_red_for = if RED.matches(r, g, b) {
                     Duration::from_micros(0)
                 } else {
-                    not_red_for + dt
+                    (not_red_for + dt).min(MAX_DURATION)
                 };
                 not_green_for = if GREEN.matches(r, g, b) {
                     Duration::from_micros(0)
                 } else {
-                    not_green_for + dt
+                    (not_green_for + dt).min(MAX_DURATION)
                 };
 
                 // log::info!(
