@@ -1,4 +1,5 @@
 use embassy_futures::select::{select, Either};
+use embassy_time::{Duration, Instant};
 
 use crate::{
     cmd::{Cmd, CMD},
@@ -19,6 +20,10 @@ pub async fn run() -> Screen {
     let mut g_max = 0i16;
     let mut b_max = 0i16;
 
+    let mut now = Instant::now();
+    let mut last_inversion = now;
+    let mut last_good_cross = now;
+
     ui.values_h[0].text("RGB");
     ui.values_h[1].value2_red(r_max, r_max);
     ui.values_h[2].value2_red(r_max, r_max);
@@ -33,6 +38,15 @@ pub async fn run() -> Screen {
     loop {
         match select(RGB.wait(), CMD.wait()).await {
             Either::First(data) => {
+                now = Instant::now();
+
+                if data.detect_inversion() {
+                    last_inversion = now;
+                }
+                if data.detect_good_cross() {
+                    last_good_cross = now;
+                }
+
                 r_min = r_min.min(data.r as i16);
                 g_min = g_min.min(data.g as i16);
                 b_min = b_min.min(data.b as i16);
@@ -44,6 +58,7 @@ pub async fn run() -> Screen {
                 ui.values_h[2].value2_green(g_min, g_max);
                 ui.values_h[3].value2_blue(b_min, b_max);
                 ui.values_h[4].rgb(data);
+
                 if data.is_red() {
                     ui.values_v[0].red();
                     ui.values_v[1].red();
@@ -51,12 +66,21 @@ pub async fn run() -> Screen {
                     ui.values_v[0].black();
                     ui.values_v[1].black();
                 }
+
                 if data.is_green() {
                     ui.values_v[3].green();
                     ui.values_v[4].green();
                 } else {
                     ui.values_v[3].black();
                     ui.values_v[4].black();
+                }
+
+                if now - last_inversion < Duration::from_millis(500) {
+                    ui.values_v[2].red();
+                } else if now - last_good_cross < Duration::from_millis(500) {
+                    ui.values_v[2].green();
+                } else {
+                    ui.values_v[2].black();
                 }
             }
             Either::Second(c) => {

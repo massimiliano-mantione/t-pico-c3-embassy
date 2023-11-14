@@ -10,6 +10,9 @@ pub type I2cBus1 = RpI2c<'static, I2C1, Async>;
 
 const RETRY_SECS: u64 = 1;
 
+const DETECT_COLOR_AT_LEAST_FOR: Duration = Duration::from_millis(10);
+const DETECT_CROSS_AT_MOST_SINCE: Duration = Duration::from_millis(50);
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct RgbEvent {
     pub dt: Duration,
@@ -19,6 +22,8 @@ pub struct RgbEvent {
     pub l: u16,
     pub not_red_for: Duration,
     pub not_green_for: Duration,
+    pub last_red_for: Duration,
+    pub last_green_for: Duration,
 }
 
 impl RgbEvent {
@@ -28,6 +33,20 @@ impl RgbEvent {
 
     pub fn is_green(&self) -> bool {
         self.not_green_for == Duration::from_micros(0)
+    }
+
+    pub fn detect_inversion(&self) -> bool {
+        self.is_green()
+            && self.last_green_for >= DETECT_COLOR_AT_LEAST_FOR
+            && self.not_red_for <= DETECT_CROSS_AT_MOST_SINCE
+            && self.last_red_for >= DETECT_COLOR_AT_LEAST_FOR
+    }
+
+    pub fn detect_good_cross(&self) -> bool {
+        self.is_red()
+            && self.last_red_for >= DETECT_COLOR_AT_LEAST_FOR
+            && self.not_green_for <= DETECT_CROSS_AT_MOST_SINCE
+            && self.last_green_for >= DETECT_COLOR_AT_LEAST_FOR
     }
 }
 
@@ -69,7 +88,9 @@ const GREEN: RgbRanges = RgbRanges {
     b_max: 110,
 };
 
-const MAX_DURATION: Duration = Duration::from_secs(60);
+const DURATION_ZERO: Duration = Duration::from_secs(0);
+const DURATION_MAX: Duration = Duration::from_secs(60);
+const MIN_DT: Duration = Duration::from_micros(2000);
 
 pub static RGB: Signal<CriticalSectionRawMutex, RgbEvent> = Signal::new();
 
@@ -109,8 +130,10 @@ pub async fn rgb_task(i2c: I2cBus1) {
     }
 
     let mut last_timestamp = Instant::now();
-    let mut not_red_for = MAX_DURATION;
-    let mut not_green_for = MAX_DURATION;
+    let mut not_red_for = DURATION_MAX;
+    let mut not_green_for = DURATION_MAX;
+    let mut last_red_for = DURATION_ZERO;
+    let mut last_green_for = DURATION_ZERO;
 
     loop {
         match with_timeout(Duration::from_secs(5), tcs3472.read_all_channels_async()).await {
@@ -118,16 +141,26 @@ pub async fn rgb_task(i2c: I2cBus1) {
                 let now = Instant::now();
                 let dt = now - last_timestamp;
                 let (r, g, b, l) = (rgbc.red, rgbc.green, rgbc.blue, rgbc.clear);
-                not_red_for = if RED.matches(r, g, b) {
-                    Duration::from_micros(0)
+
+                if RED.matches(r, g, b) {
+                    if not_red_for > DURATION_ZERO {
+                        last_red_for = DURATION_ZERO;
+                    }
+                    last_red_for = (last_red_for + dt).min(DURATION_MAX);
+                    not_red_for = DURATION_ZERO;
                 } else {
-                    (not_red_for + dt).min(MAX_DURATION)
-                };
-                not_green_for = if GREEN.matches(r, g, b) {
-                    Duration::from_micros(0)
+                    not_red_for = (not_red_for + dt).min(DURATION_MAX);
+                }
+
+                if GREEN.matches(r, g, b) {
+                    if not_green_for > DURATION_ZERO {
+                        last_green_for = DURATION_ZERO;
+                    }
+                    last_green_for = (last_green_for + dt).min(DURATION_MAX);
+                    not_green_for = DURATION_ZERO;
                 } else {
-                    (not_green_for + dt).min(MAX_DURATION)
-                };
+                    not_green_for = (not_green_for + dt).min(DURATION_MAX);
+                }
 
                 // log::info!(
                 //     "RGBC: r {} g {} b {} c {}, NR {}, NG {}",
@@ -147,9 +180,13 @@ pub async fn rgb_task(i2c: I2cBus1) {
                     l,
                     not_red_for,
                     not_green_for,
+                    last_red_for,
+                    last_green_for,
                 });
                 last_timestamp = now;
-                embassy_time::Timer::after(Duration::from_micros(1500)).await;
+                if dt < MIN_DT {
+                    embassy_time::Timer::after(MIN_DT - dt).await;
+                }
             }
             Ok(Err(_)) => {
                 log::info!("RGB read error");
