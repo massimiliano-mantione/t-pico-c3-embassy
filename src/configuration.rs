@@ -8,6 +8,7 @@ use crate::{race::Angle, vision::LaserSidePosition};
 pub enum RaceConfigEntry {
     MaxSpeed,
     MinSpeed,
+    SteerBias,
     SafeAngle,
     BackSpeed,
     BackTime,
@@ -19,21 +20,17 @@ pub enum RaceConfigEntry {
     BackDistanceCenter,
     BackDistanceSide30,
     BackDistanceSide60,
-    SteerKpN,
-    SteerKpD,
-    InterpolationKpN,
-    InterpolationKpD,
     SlopeDistanceDelta,
     ClimbingSpeed,
     ClimbingAngle,
     ClimbingIgnore,
     StillnessDelta,
     StillnessTime,
+    UseStillness,
     InversionTime,
     ClimbDirection,
     UseClimbDirection,
-    TrackSide,
-    TrackSideDistance,
+    UseColorInversion,
     End,
 }
 pub const RACE_CONFIG_ENTRY_START: usize = 0;
@@ -91,6 +88,7 @@ impl RaceConfigEntry {
         match self {
             RaceConfigEntry::MaxSpeed => "MAX SPEED",
             RaceConfigEntry::MinSpeed => "MIN SPEED",
+            RaceConfigEntry::SteerBias => "STEER BIAS",
             RaceConfigEntry::SafeAngle => "SAFE ANGLE",
             RaceConfigEntry::BackSpeed => "BACK SPEED",
             RaceConfigEntry::BackTime => "BACK TIME",
@@ -102,21 +100,17 @@ impl RaceConfigEntry {
             RaceConfigEntry::BackDistanceCenter => "BACK D  0",
             RaceConfigEntry::BackDistanceSide30 => "BACK D 30",
             RaceConfigEntry::BackDistanceSide60 => "BACK D 60",
-            RaceConfigEntry::SteerKpN => "STEER KP N",
-            RaceConfigEntry::SteerKpD => "STEER KP D",
-            RaceConfigEntry::InterpolationKpN => "INTERP KP N",
-            RaceConfigEntry::InterpolationKpD => "INTERP KP D",
             RaceConfigEntry::SlopeDistanceDelta => "SLOPE DELTA",
             RaceConfigEntry::ClimbingSpeed => "CLIMB SPD",
             RaceConfigEntry::ClimbingAngle => "CLIMB ANG",
             RaceConfigEntry::ClimbingIgnore => "CLIMB IGN",
             RaceConfigEntry::StillnessDelta => "STILL DELTA",
             RaceConfigEntry::StillnessTime => "STILL TIME",
+            RaceConfigEntry::UseStillness => "USE STILL",
             RaceConfigEntry::InversionTime => "INV TIME",
             RaceConfigEntry::ClimbDirection => "CLIMB DIR",
             RaceConfigEntry::UseClimbDirection => "USE CLIMB DIR",
-            RaceConfigEntry::TrackSide => "TRACK SIDE",
-            RaceConfigEntry::TrackSideDistance => "TRACK DIST",
+            RaceConfigEntry::UseColorInversion => "USE COLOR INV",
             RaceConfigEntry::End => "END",
         }
     }
@@ -125,6 +119,7 @@ impl RaceConfigEntry {
         match self {
             RaceConfigEntry::MaxSpeed => 2000,
             RaceConfigEntry::MinSpeed => 1000,
+            RaceConfigEntry::SteerBias => 0,
             RaceConfigEntry::SafeAngle => 0,
             RaceConfigEntry::BackSpeed => 2000,
             RaceConfigEntry::BackTime => 100,
@@ -136,21 +131,17 @@ impl RaceConfigEntry {
             RaceConfigEntry::BackDistanceCenter => 25,
             RaceConfigEntry::BackDistanceSide30 => 25,
             RaceConfigEntry::BackDistanceSide60 => 25,
-            RaceConfigEntry::SteerKpN => 10,
-            RaceConfigEntry::SteerKpD => 10,
-            RaceConfigEntry::InterpolationKpN => 1,
-            RaceConfigEntry::InterpolationKpD => 1,
             RaceConfigEntry::SlopeDistanceDelta => 50,
             RaceConfigEntry::ClimbingSpeed => 2000,
             RaceConfigEntry::ClimbingAngle => 5,
             RaceConfigEntry::ClimbingIgnore => 0,
             RaceConfigEntry::StillnessDelta => 0,
             RaceConfigEntry::StillnessTime => 0,
+            RaceConfigEntry::UseStillness => 0,
             RaceConfigEntry::InversionTime => 100,
             RaceConfigEntry::ClimbDirection => -180,
             RaceConfigEntry::UseClimbDirection => 0,
-            RaceConfigEntry::TrackSide => 0,
-            RaceConfigEntry::TrackSideDistance => 10,
+            RaceConfigEntry::UseColorInversion => 0,
             RaceConfigEntry::End => 0,
         }
     }
@@ -159,6 +150,7 @@ impl RaceConfigEntry {
         match self {
             RaceConfigEntry::MaxSpeed => 10000,
             RaceConfigEntry::MinSpeed => 9000,
+            RaceConfigEntry::SteerBias => 20,
             RaceConfigEntry::SafeAngle => 35,
             RaceConfigEntry::BackSpeed => 10000,
             RaceConfigEntry::BackTime => 1000,
@@ -170,21 +162,17 @@ impl RaceConfigEntry {
             RaceConfigEntry::BackDistanceCenter => 400,
             RaceConfigEntry::BackDistanceSide30 => 400,
             RaceConfigEntry::BackDistanceSide60 => 400,
-            RaceConfigEntry::SteerKpN => 1000,
-            RaceConfigEntry::SteerKpD => 1000,
-            RaceConfigEntry::InterpolationKpN => 1000,
-            RaceConfigEntry::InterpolationKpD => 1000,
             RaceConfigEntry::SlopeDistanceDelta => 300,
             RaceConfigEntry::ClimbingSpeed => 10000,
             RaceConfigEntry::ClimbingAngle => 25,
             RaceConfigEntry::ClimbingIgnore => 10,
             RaceConfigEntry::StillnessDelta => 100,
             RaceConfigEntry::StillnessTime => 100,
+            RaceConfigEntry::UseStillness => 1,
             RaceConfigEntry::InversionTime => 1000,
             RaceConfigEntry::ClimbDirection => 180,
             RaceConfigEntry::UseClimbDirection => 1,
-            RaceConfigEntry::TrackSide => 1,
-            RaceConfigEntry::TrackSideDistance => 550,
+            RaceConfigEntry::UseColorInversion => 1,
             RaceConfigEntry::End => 1,
         }
     }
@@ -193,6 +181,7 @@ impl RaceConfigEntry {
         match self {
             RaceConfigEntry::MaxSpeed => 500,
             RaceConfigEntry::MinSpeed => 500,
+            RaceConfigEntry::SteerBias => 1,
             RaceConfigEntry::SafeAngle => 1,
             RaceConfigEntry::BackSpeed => 500,
             RaceConfigEntry::BackTime => 10,
@@ -204,21 +193,17 @@ impl RaceConfigEntry {
             RaceConfigEntry::BackDistanceCenter => 25,
             RaceConfigEntry::BackDistanceSide30 => 25,
             RaceConfigEntry::BackDistanceSide60 => 25,
-            RaceConfigEntry::SteerKpN => 10,
-            RaceConfigEntry::SteerKpD => 10,
-            RaceConfigEntry::InterpolationKpN => 10,
-            RaceConfigEntry::InterpolationKpD => 10,
             RaceConfigEntry::SlopeDistanceDelta => 10,
             RaceConfigEntry::ClimbingSpeed => 500,
             RaceConfigEntry::ClimbingAngle => 1,
             RaceConfigEntry::ClimbingIgnore => 1,
             RaceConfigEntry::StillnessDelta => 1,
             RaceConfigEntry::StillnessTime => 1,
+            RaceConfigEntry::UseStillness => 1,
             RaceConfigEntry::InversionTime => 10,
             RaceConfigEntry::ClimbDirection => 90,
             RaceConfigEntry::UseClimbDirection => 1,
-            RaceConfigEntry::TrackSide => 1,
-            RaceConfigEntry::TrackSideDistance => 10,
+            RaceConfigEntry::UseColorInversion => 1,
             RaceConfigEntry::End => 1,
         }
     }
@@ -227,6 +212,7 @@ impl RaceConfigEntry {
         match self {
             RaceConfigEntry::MaxSpeed => None,
             RaceConfigEntry::MinSpeed => None,
+            RaceConfigEntry::SteerBias => None,
             RaceConfigEntry::SafeAngle => None,
             RaceConfigEntry::BackSpeed => None,
             RaceConfigEntry::BackTime => None,
@@ -238,16 +224,17 @@ impl RaceConfigEntry {
             RaceConfigEntry::BackDistanceCenter => None,
             RaceConfigEntry::BackDistanceSide30 => None,
             RaceConfigEntry::BackDistanceSide60 => None,
-            RaceConfigEntry::SteerKpN => None,
-            RaceConfigEntry::SteerKpD => None,
-            RaceConfigEntry::InterpolationKpN => None,
-            RaceConfigEntry::InterpolationKpD => None,
             RaceConfigEntry::SlopeDistanceDelta => None,
             RaceConfigEntry::ClimbingSpeed => None,
             RaceConfigEntry::ClimbingAngle => None,
             RaceConfigEntry::ClimbingIgnore => None,
             RaceConfigEntry::StillnessDelta => None,
             RaceConfigEntry::StillnessTime => None,
+            RaceConfigEntry::UseStillness => match value {
+                0 => Some("NO"),
+                1 => Some("YES"),
+                _ => None,
+            },
             RaceConfigEntry::InversionTime => None,
             RaceConfigEntry::ClimbDirection => None,
             RaceConfigEntry::UseClimbDirection => match value {
@@ -255,12 +242,11 @@ impl RaceConfigEntry {
                 1 => Some("YES"),
                 _ => None,
             },
-            RaceConfigEntry::TrackSide => match value {
-                0 => Some("LEFT"),
-                1 => Some("RIGHT"),
+            RaceConfigEntry::UseColorInversion => match value {
+                0 => Some("NO"),
+                1 => Some("YES"),
                 _ => None,
             },
-            RaceConfigEntry::TrackSideDistance => None,
             RaceConfigEntry::End => None,
         }
     }
@@ -270,6 +256,7 @@ impl RaceConfigEntry {
 pub struct RaceConfig {
     pub max_speed: i16,
     pub min_speed: i16,
+    pub steer_bias: i16,
     pub safe_angle: i16,
     pub back_speed: i16,
     pub back_time: i16,
@@ -281,21 +268,17 @@ pub struct RaceConfig {
     pub back_distance_center: i16,
     pub back_distance_side_30: i16,
     pub back_distance_side_60: i16,
-    pub steer_kp_n: i16,
-    pub steer_kp_d: i16,
-    pub interpolation_kp_n: i16,
-    pub interpolation_kp_d: i16,
     pub slope_distance_delta: i16,
     pub climbing_speed: i16,
     pub climbing_angle: i16,
     pub climbing_ignore: i16,
     pub stillness_delta: i16,
     pub stillness_time: i16,
+    pub use_stillness: i16,
     pub inversion_time: i16,
     pub climb_direction: i16,
     pub use_climb_direction: i16,
-    pub track_side: i16,
-    pub track_side_distance: i16,
+    pub use_color_inversion: i16,
 }
 
 impl Default for RaceConfig {
@@ -309,6 +292,7 @@ impl RaceConfig {
         Self {
             max_speed: 3900,
             min_speed: 3600,
+            steer_bias: 0,
             safe_angle: 10,
             back_speed: 5000,
             back_time: 100,
@@ -320,21 +304,17 @@ impl RaceConfig {
             back_distance_center: 80,
             back_distance_side_30: 60,
             back_distance_side_60: 50,
-            steer_kp_n: 5,
-            steer_kp_d: 100,
-            interpolation_kp_n: 130,
-            interpolation_kp_d: 100,
             slope_distance_delta: 150,
             climbing_speed: 8000,
             climbing_angle: 15,
             climbing_ignore: 3,
             stillness_delta: 0,
             stillness_time: 500,
+            use_stillness: 1,
             inversion_time: 750,
             climb_direction: 0,
             use_climb_direction: 1,
-            track_side: 0,
-            track_side_distance: 400,
+            use_color_inversion: 1,
         }
     }
 
@@ -417,6 +397,7 @@ impl RaceConfig {
         match entry {
             RaceConfigEntry::MaxSpeed => self.max_speed = Self::init().max_speed,
             RaceConfigEntry::MinSpeed => self.min_speed = Self::init().min_speed,
+            RaceConfigEntry::SteerBias => self.steer_bias = Self::init().steer_bias,
             RaceConfigEntry::SafeAngle => self.safe_angle = Self::init().safe_angle,
             RaceConfigEntry::BackSpeed => self.back_speed = Self::init().back_speed,
             RaceConfigEntry::BackTime => self.back_time = Self::init().back_time,
@@ -440,14 +421,6 @@ impl RaceConfig {
             RaceConfigEntry::BackDistanceSide60 => {
                 self.back_distance_side_60 = Self::init().back_distance_side_60
             }
-            RaceConfigEntry::SteerKpN => self.steer_kp_n = Self::init().steer_kp_n,
-            RaceConfigEntry::SteerKpD => self.steer_kp_d = Self::init().steer_kp_d,
-            RaceConfigEntry::InterpolationKpN => {
-                self.interpolation_kp_n = Self::init().interpolation_kp_n
-            }
-            RaceConfigEntry::InterpolationKpD => {
-                self.interpolation_kp_d = Self::init().interpolation_kp_d
-            }
             RaceConfigEntry::SlopeDistanceDelta => {
                 self.slope_distance_delta = Self::init().slope_distance_delta
             }
@@ -456,14 +429,14 @@ impl RaceConfig {
             RaceConfigEntry::ClimbingIgnore => self.climbing_ignore = Self::init().climbing_ignore,
             RaceConfigEntry::StillnessDelta => self.stillness_delta = Self::init().stillness_delta,
             RaceConfigEntry::StillnessTime => self.stillness_time = Self::init().stillness_time,
+            RaceConfigEntry::UseStillness => self.use_stillness = Self::init().use_stillness,
             RaceConfigEntry::InversionTime => self.inversion_time = Self::init().inversion_time,
             RaceConfigEntry::ClimbDirection => self.climb_direction = Self::init().climb_direction,
             RaceConfigEntry::UseClimbDirection => {
                 self.use_climb_direction = Self::init().use_climb_direction
             }
-            RaceConfigEntry::TrackSide => self.track_side = Self::init().track_side,
-            RaceConfigEntry::TrackSideDistance => {
-                self.track_side_distance = Self::init().track_side_distance
+            RaceConfigEntry::UseColorInversion => {
+                self.use_color_inversion = Self::init().use_color_inversion
             }
             RaceConfigEntry::End => {}
         }
@@ -473,6 +446,7 @@ impl RaceConfig {
         match entry {
             RaceConfigEntry::MaxSpeed => self.max_speed,
             RaceConfigEntry::MinSpeed => self.min_speed,
+            RaceConfigEntry::SteerBias => self.steer_bias,
             RaceConfigEntry::SafeAngle => self.safe_angle,
             RaceConfigEntry::BackSpeed => self.back_speed,
             RaceConfigEntry::BackTime => self.back_time,
@@ -484,21 +458,17 @@ impl RaceConfig {
             RaceConfigEntry::BackDistanceCenter => self.back_distance_center,
             RaceConfigEntry::BackDistanceSide30 => self.back_distance_side_30,
             RaceConfigEntry::BackDistanceSide60 => self.back_distance_side_60,
-            RaceConfigEntry::SteerKpN => self.steer_kp_n,
-            RaceConfigEntry::SteerKpD => self.steer_kp_d,
-            RaceConfigEntry::InterpolationKpN => self.interpolation_kp_n,
-            RaceConfigEntry::InterpolationKpD => self.interpolation_kp_d,
             RaceConfigEntry::SlopeDistanceDelta => self.slope_distance_delta,
             RaceConfigEntry::ClimbingSpeed => self.climbing_speed,
             RaceConfigEntry::ClimbingAngle => self.climbing_angle,
             RaceConfigEntry::ClimbingIgnore => self.climbing_ignore,
             RaceConfigEntry::StillnessDelta => self.stillness_delta,
             RaceConfigEntry::StillnessTime => self.stillness_time,
+            RaceConfigEntry::UseStillness => self.use_stillness,
             RaceConfigEntry::InversionTime => self.inversion_time,
             RaceConfigEntry::ClimbDirection => self.climb_direction,
             RaceConfigEntry::UseClimbDirection => self.use_climb_direction,
-            RaceConfigEntry::TrackSide => self.track_side,
-            RaceConfigEntry::TrackSideDistance => self.track_side_distance,
+            RaceConfigEntry::UseColorInversion => self.use_color_inversion,
             RaceConfigEntry::End => 0,
         }
     }
@@ -507,6 +477,7 @@ impl RaceConfig {
         match entry {
             RaceConfigEntry::MaxSpeed => self.max_speed = value,
             RaceConfigEntry::MinSpeed => self.min_speed = value,
+            RaceConfigEntry::SteerBias => self.steer_bias = value,
             RaceConfigEntry::SafeAngle => self.safe_angle = value,
             RaceConfigEntry::BackSpeed => self.back_speed = value,
             RaceConfigEntry::BackTime => self.back_time = value,
@@ -518,21 +489,17 @@ impl RaceConfig {
             RaceConfigEntry::BackDistanceCenter => self.back_distance_center = value,
             RaceConfigEntry::BackDistanceSide30 => self.back_distance_side_30 = value,
             RaceConfigEntry::BackDistanceSide60 => self.back_distance_side_60 = value,
-            RaceConfigEntry::SteerKpN => self.steer_kp_n = value,
-            RaceConfigEntry::SteerKpD => self.steer_kp_d = value,
-            RaceConfigEntry::InterpolationKpN => self.interpolation_kp_n = value,
-            RaceConfigEntry::InterpolationKpD => self.interpolation_kp_d = value,
             RaceConfigEntry::SlopeDistanceDelta => self.slope_distance_delta = value,
             RaceConfigEntry::ClimbingSpeed => self.climbing_speed = value,
             RaceConfigEntry::ClimbingAngle => self.climbing_angle = value,
             RaceConfigEntry::ClimbingIgnore => self.climbing_ignore = value,
             RaceConfigEntry::StillnessDelta => self.stillness_delta = value,
             RaceConfigEntry::StillnessTime => self.stillness_time = value,
+            RaceConfigEntry::UseStillness => self.use_stillness = value,
             RaceConfigEntry::InversionTime => self.inversion_time = value,
             RaceConfigEntry::ClimbDirection => self.climb_direction = value,
             RaceConfigEntry::UseClimbDirection => self.use_climb_direction = value,
-            RaceConfigEntry::TrackSide => self.track_side = value,
-            RaceConfigEntry::TrackSideDistance => self.track_side_distance = value,
+            RaceConfigEntry::UseColorInversion => self.use_color_inversion = value,
             RaceConfigEntry::End => {}
         }
     }
