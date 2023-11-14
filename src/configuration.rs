@@ -28,6 +28,7 @@ pub enum RaceConfigEntry {
     StillnessTime,
     UseStillness,
     InversionTime,
+    PostInversionTime,
     ClimbDirection,
     UseClimbDirection,
     UseColorInversion,
@@ -108,6 +109,7 @@ impl RaceConfigEntry {
             RaceConfigEntry::StillnessTime => "STILL TIME",
             RaceConfigEntry::UseStillness => "USE STILL",
             RaceConfigEntry::InversionTime => "INV TIME",
+            RaceConfigEntry::PostInversionTime => "POST INV TIME",
             RaceConfigEntry::ClimbDirection => "CLIMB DIR",
             RaceConfigEntry::UseClimbDirection => "USE CLIMB DIR",
             RaceConfigEntry::UseColorInversion => "USE COLOR INV",
@@ -139,6 +141,7 @@ impl RaceConfigEntry {
             RaceConfigEntry::StillnessTime => 0,
             RaceConfigEntry::UseStillness => 0,
             RaceConfigEntry::InversionTime => 100,
+            RaceConfigEntry::PostInversionTime => 10,
             RaceConfigEntry::ClimbDirection => -180,
             RaceConfigEntry::UseClimbDirection => 0,
             RaceConfigEntry::UseColorInversion => 0,
@@ -170,6 +173,7 @@ impl RaceConfigEntry {
             RaceConfigEntry::StillnessTime => 100,
             RaceConfigEntry::UseStillness => 1,
             RaceConfigEntry::InversionTime => 1000,
+            RaceConfigEntry::PostInversionTime => 500,
             RaceConfigEntry::ClimbDirection => 180,
             RaceConfigEntry::UseClimbDirection => 1,
             RaceConfigEntry::UseColorInversion => 1,
@@ -201,6 +205,7 @@ impl RaceConfigEntry {
             RaceConfigEntry::StillnessTime => 1,
             RaceConfigEntry::UseStillness => 1,
             RaceConfigEntry::InversionTime => 10,
+            RaceConfigEntry::PostInversionTime => 10,
             RaceConfigEntry::ClimbDirection => 90,
             RaceConfigEntry::UseClimbDirection => 1,
             RaceConfigEntry::UseColorInversion => 1,
@@ -236,6 +241,7 @@ impl RaceConfigEntry {
                 _ => None,
             },
             RaceConfigEntry::InversionTime => None,
+            RaceConfigEntry::PostInversionTime => None,
             RaceConfigEntry::ClimbDirection => None,
             RaceConfigEntry::UseClimbDirection => match value {
                 0 => Some("NO"),
@@ -276,6 +282,7 @@ pub struct RaceConfig {
     pub stillness_time: i16,
     pub use_stillness: i16,
     pub inversion_time: i16,
+    pub post_inversion_time: i16,
     pub climb_direction: i16,
     pub use_climb_direction: i16,
     pub use_color_inversion: i16,
@@ -312,6 +319,7 @@ impl RaceConfig {
             stillness_time: 500,
             use_stillness: 1,
             inversion_time: 750,
+            post_inversion_time: 150,
             climb_direction: 0,
             use_climb_direction: 1,
             use_color_inversion: 1,
@@ -392,6 +400,18 @@ impl RaceConfig {
         self.use_climb_direction != 0
     }
 
+    pub fn use_stillness(&self) -> bool {
+        self.use_stillness != 0
+    }
+
+    pub fn use_color_inversion(&self) -> bool {
+        self.use_color_inversion != 0
+    }
+
+    pub fn post_inversion_time(&self) -> Duration {
+        Duration::from_millis(self.post_inversion_time as u64)
+    }
+
     #[allow(unused)]
     pub fn reset(&mut self, entry: RaceConfigEntry) {
         match entry {
@@ -431,6 +451,9 @@ impl RaceConfig {
             RaceConfigEntry::StillnessTime => self.stillness_time = Self::init().stillness_time,
             RaceConfigEntry::UseStillness => self.use_stillness = Self::init().use_stillness,
             RaceConfigEntry::InversionTime => self.inversion_time = Self::init().inversion_time,
+            RaceConfigEntry::PostInversionTime => {
+                self.post_inversion_time = Self::init().post_inversion_time
+            }
             RaceConfigEntry::ClimbDirection => self.climb_direction = Self::init().climb_direction,
             RaceConfigEntry::UseClimbDirection => {
                 self.use_climb_direction = Self::init().use_climb_direction
@@ -466,6 +489,7 @@ impl RaceConfig {
             RaceConfigEntry::StillnessTime => self.stillness_time,
             RaceConfigEntry::UseStillness => self.use_stillness,
             RaceConfigEntry::InversionTime => self.inversion_time,
+            RaceConfigEntry::PostInversionTime => self.post_inversion_time,
             RaceConfigEntry::ClimbDirection => self.climb_direction,
             RaceConfigEntry::UseClimbDirection => self.use_climb_direction,
             RaceConfigEntry::UseColorInversion => self.use_color_inversion,
@@ -497,6 +521,7 @@ impl RaceConfig {
             RaceConfigEntry::StillnessTime => self.stillness_time = value,
             RaceConfigEntry::UseStillness => self.use_stillness = value,
             RaceConfigEntry::InversionTime => self.inversion_time = value,
+            RaceConfigEntry::PostInversionTime => self.post_inversion_time = value,
             RaceConfigEntry::ClimbDirection => self.climb_direction = value,
             RaceConfigEntry::UseClimbDirection => self.use_climb_direction = value,
             RaceConfigEntry::UseColorInversion => self.use_color_inversion = value,

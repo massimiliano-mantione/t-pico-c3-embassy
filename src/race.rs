@@ -340,7 +340,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
         };
 
         if route_target.is_none() {
-            if remaining_sprint.is_none() && !simulate {
+            if config.use_stillness() && remaining_sprint.is_none() && !simulate {
                 if config.detect_stillness(stillness_time) {
                     ui.blue();
                     let target_delta = if steer < Angle::ZERO {
@@ -365,8 +365,11 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
                 }
             }
 
-            if rgb_data.is_green() {
-                if rgb_data.not_red_for < Duration::from_millis(50) {
+            if config.use_color_inversion()
+                && remaining_sprint.is_none()
+                && remaining_back_panic.is_none()
+            {
+                if rgb_data.detect_inversion() {
                     route_target = Some(RouteTarget::new_for_inversion(
                         config,
                         track_heading,
@@ -426,6 +429,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
 
             if delta.value().abs() < 10 {
                 route_target = None;
+                remaining_sprint = Some(config.post_inversion_time());
                 (0, Angle::ZERO)
             } else {
                 let steer = delta.min(Angle::MAX_STEER).max(Angle::MIN_STEER);
