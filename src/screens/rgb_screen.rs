@@ -57,7 +57,7 @@ pub async fn run() -> Screen {
                 ui.values_h[1].value2_red(r_min, r_max);
                 ui.values_h[2].value2_green(g_min, g_max);
                 ui.values_h[3].value2_blue(b_min, b_max);
-                ui.values_h[4].rgb(data);
+                ui.values_h[4].hsv(data);
 
                 if data.is_red() {
                     ui.values_v[0].red();

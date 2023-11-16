@@ -69,6 +69,14 @@ pub enum VisualStateH {
         g: u16,
         b: u16,
     },
+    Hsv {
+        r: u16,
+        g: u16,
+        b: u16,
+        h: u16,
+        s: u16,
+        v: u16,
+    },
     ImuAngles {
         roll: Angle,
         pitch: Angle,
@@ -193,6 +201,17 @@ impl VisualStateH {
         }
     }
 
+    pub fn hsv(&mut self, data: RgbEvent) {
+        *self = Self::Hsv {
+            r: data.r,
+            g: data.g,
+            b: data.b,
+            h: data.h,
+            s: data.s,
+            v: data.v,
+        }
+    }
+
     pub fn imu_angles(&mut self, yaw: i16, pitch: i16, roll: i16) {
         *self = Self::ImuAngles {
             roll: Angle::from_imu_value(roll),
@@ -221,6 +240,7 @@ impl VisualStateH {
             VisualStateH::Gauge { .. } => false,
             VisualStateH::Imu { .. } => true,
             VisualStateH::Rgb { .. } => false,
+            VisualStateH::Hsv { .. } => false,
             VisualStateH::ImuAngles { .. } => false,
         }
     }
@@ -234,6 +254,7 @@ impl VisualStateH {
             VisualStateH::Gauge { .. } => true,
             VisualStateH::Imu { .. } => true,
             VisualStateH::Rgb { .. } => false,
+            VisualStateH::Hsv { .. } => false,
             VisualStateH::ImuAngles { .. } => true,
         }
     }
@@ -398,6 +419,30 @@ impl VisualStateH {
                     .ok();
 
                 let text = uformat!("{} {} {}", r, g, b);
+                let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
+                Text::new(
+                    text.as_str(),
+                    Self::position(index)
+                        + Point {
+                            x: 2,
+                            y: VISUAL_STATE_H_HEIGHT - 5,
+                        },
+                    style,
+                )
+                .draw(target)
+                .ok();
+            }
+            VisualStateH::Hsv { r, g, b, h, s, v } => {
+                let rb = (r >> 2).min(255) as u8;
+                let gb = (g >> 2).min(255) as u8;
+                let bb = (b >> 2).min(255) as u8;
+                let color = Rgb565::new(rb, gb, bb);
+
+                target
+                    .fill_solid(&Rectangle::new(Self::position(index), Self::size()), color)
+                    .ok();
+
+                let text = uformat!("{} {} {}", h, s, v);
                 let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
                 Text::new(
                     text.as_str(),

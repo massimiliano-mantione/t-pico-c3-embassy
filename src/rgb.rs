@@ -13,6 +13,33 @@ const RETRY_SECS: u64 = 1;
 const DETECT_COLOR_AT_LEAST_FOR: Duration = Duration::from_millis(10);
 const DETECT_CROSS_AT_MOST_SINCE: Duration = Duration::from_millis(50);
 
+fn rgb2hsv(r: i32, g: i32, b: i32) -> (i32, i32, i32) {
+    const HUE_DEGREE: i32 = 512;
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let delta = max - min;
+
+    let (h, s) = if delta == 0 {
+        (0, 0)
+    } else {
+        let h = if r == max {
+            ((g - b) * 60 * HUE_DEGREE) / delta
+        } else if g == max {
+            ((b - r) * 60 * HUE_DEGREE) / delta + 120 * HUE_DEGREE
+        } else if b == max {
+            ((r - g) * 60 * HUE_DEGREE) / delta + 240 * HUE_DEGREE
+        } else {
+            0
+        };
+        let h = if h < 0 { h + 360 * HUE_DEGREE } else { h };
+        let s = (256 * delta - 8) / max;
+
+        (h, s)
+    };
+
+    (h / HUE_DEGREE, s, max)
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct RgbEvent {
     pub dt: Duration,
@@ -20,6 +47,9 @@ pub struct RgbEvent {
     pub g: u16,
     pub b: u16,
     pub l: u16,
+    pub h: u16,
+    pub s: u16,
+    pub v: u16,
     pub not_red_for: Duration,
     pub not_green_for: Duration,
     pub last_red_for: Duration,
@@ -49,94 +79,6 @@ impl RgbEvent {
             && self.last_green_for >= DETECT_COLOR_AT_LEAST_FOR
     }
 }
-
-struct RgbRanges {
-    pub r_min: u16,
-    pub r_max: u16,
-    pub g_min: u16,
-    pub g_max: u16,
-    pub b_min: u16,
-    pub b_max: u16,
-    pub r_ratio: u16,
-    pub g_ratio: u16,
-    pub b_ratio: u16,
-}
-
-// fn matches_ratios(lead: u32, v1: u32, r1: u32, v2: u32, r2: u32) -> bool {
-//     if lead > 0 {
-//         let n1 = v1 * 100 / lead;
-//         let n2 = v2 * 100 / lead;
-//         n1 <= r1 * 100 && n2 <= r2 * 100
-//     } else {
-//         false
-//     }
-// }
-
-impl RgbRanges {
-    pub fn matches_levels(&self, r: u16, g: u16, b: u16) -> bool {
-        r >= self.r_min
-            && r <= self.r_max
-            && g >= self.g_min
-            && g <= self.g_max
-            && b >= self.b_min
-            && b <= self.b_max
-    }
-
-    pub fn matches(&self, r: u16, g: u16, b: u16) -> bool {
-        self.matches_levels(r, g, b)
-        // && if self.r_ratio == 100 {
-        //     matches_ratios(
-        //         r as u32,
-        //         g as u32,
-        //         self.g_ratio as u32,
-        //         b as u32,
-        //         self.g_ratio as u32,
-        //     )
-        // } else if self.g_ratio == 100 {
-        //     matches_ratios(
-        //         g as u32,
-        //         r as u32,
-        //         self.r_ratio as u32,
-        //         b as u32,
-        //         self.g_ratio as u32,
-        //     )
-        // } else if self.b_ratio == 100 {
-        //     matches_ratios(
-        //         r as u32,
-        //         r as u32,
-        //         self.g_ratio as u32,
-        //         g as u32,
-        //         self.g_ratio as u32,
-        //     )
-        // } else {
-        //     false
-        // }
-    }
-}
-
-const RED: RgbRanges = RgbRanges {
-    r_min: 75,
-    r_max: u16::MAX,
-    g_min: 0,
-    g_max: 60,
-    b_min: 0,
-    b_max: 70,
-    r_ratio: 100,
-    g_ratio: 60,
-    b_ratio: 60,
-};
-
-const GREEN: RgbRanges = RgbRanges {
-    r_min: 0,
-    r_max: 70,
-    g_min: 75,
-    g_max: u16::MAX,
-    b_min: 0,
-    b_max: 110,
-    r_ratio: 60,
-    g_ratio: 100,
-    b_ratio: 60,
-};
 
 const DURATION_ZERO: Duration = Duration::from_secs(0);
 const DURATION_MAX: Duration = Duration::from_secs(60);
@@ -191,8 +133,15 @@ pub async fn rgb_task(i2c: I2cBus1) {
                 let now = Instant::now();
                 let dt = now - last_timestamp;
                 let (r, g, b, l) = (rgbc.red, rgbc.green, rgbc.blue, rgbc.clear);
+                let (h, s, v) = rgb2hsv(r as i32, g as i32, b as i32);
 
-                if RED.matches(r, g, b) {
+                const HUE_DELTA: i32 = 15;
+                const SAT_MIN: i32 = 128;
+                let red_matches = (h <= HUE_DELTA || h >= 360 - HUE_DELTA) && s >= SAT_MIN;
+                let green_matches = h >= 120 - HUE_DELTA && h <= 120 + HUE_DELTA && s >= SAT_MIN;
+                let (h, s, v) = (h as u16, s as u16, v as u16);
+
+                if red_matches {
                     if not_red_for > DURATION_ZERO {
                         last_red_for = DURATION_ZERO;
                     }
@@ -202,7 +151,7 @@ pub async fn rgb_task(i2c: I2cBus1) {
                     not_red_for = (not_red_for + dt).min(DURATION_MAX);
                 }
 
-                if GREEN.matches(r, g, b) {
+                if green_matches {
                     if not_green_for > DURATION_ZERO {
                         last_green_for = DURATION_ZERO;
                     }
@@ -228,6 +177,9 @@ pub async fn rgb_task(i2c: I2cBus1) {
                     g,
                     b,
                     l,
+                    h,
+                    s,
+                    v,
                     not_red_for,
                     not_green_for,
                     last_red_for,
