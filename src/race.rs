@@ -314,7 +314,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
 
     let (raw_laser_readings, mut current_imu_data, mut rgb_data) =
         join3(RAW_LASER_READINGS.wait(), IMU_DATA.wait(), RGB.wait()).await;
-    let mut stillness_time = None;
+    let mut is_still = false;
     let mut absolute_heading = Angle::from_imu_value(current_imu_data.yaw);
     let mut track_heading = absolute_heading - start_angle;
     let mut current_pitch = Angle::from_imu_value(current_imu_data.pitch);
@@ -341,7 +341,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
 
         if route_target.is_none() {
             if config.use_stillness() && remaining_sprint.is_none() && !simulate {
-                if config.detect_stillness(stillness_time) {
+                if is_still {
                     ui.blue();
                     let target_delta = if steer < Angle::ZERO {
                         Angle::L45
@@ -380,7 +380,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
         }
 
         if simulate {
-            if current_imu_data.stillness.is_some() {
+            if current_imu_data.is_still(now) {
                 ui.values_h[0].text_blue("SYM");
             } else {
                 ui.values_h[0].text_green("SYM");
@@ -499,6 +499,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
                 &route_target,
                 action.steer.into(),
                 action.power,
+                now,
                 dt,
             )));
         }
@@ -522,7 +523,7 @@ pub async fn race(config: &RaceConfig, start_angle: Angle, simulate: bool) -> Sc
                 cv.update(&data, &config, current_pitch);
             }
             Either4::Second(imu_data) => {
-                stillness_time = imu_data.stillness;
+                is_still = imu_data.is_still(now);
                 absolute_heading = Angle::from_imu_value(imu_data.yaw);
                 track_heading = absolute_heading - start_angle;
                 current_pitch = Angle::from_imu_value(imu_data.pitch);

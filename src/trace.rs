@@ -1,5 +1,5 @@
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
-use embassy_time::Duration;
+use embassy_time::{Duration, Instant};
 use static_cell::make_static;
 
 use crate::{
@@ -37,7 +37,7 @@ pub struct TraceEvent {
     pub remaining_target_ms: u32,
     pub target: Angle,
     pub target_back: bool,
-    pub stillness_ms: u32,
+    pub stillness: bool,
     pub dt_us: u32,
 }
 
@@ -51,6 +51,7 @@ impl TraceEvent {
         target: &Option<RouteTarget>,
         steer: Angle,
         speed: i16,
+        now: Instant,
         dt: Duration,
     ) -> Self {
         Self {
@@ -74,17 +75,14 @@ impl TraceEvent {
                 .unwrap_or(0),
             target: target.map(|t| t.target).unwrap_or(Angle::ZERO),
             target_back: target.map(|t| t.go_back).unwrap_or(false),
-            stillness_ms: imu_data
-                .stillness
-                .map(|s| s.as_millis() as u32)
-                .unwrap_or(0),
+            stillness: imu_data.is_still(now),
             dt_us: dt.as_micros() as u32,
         }
     }
 
     pub fn print(&self, index: usize, elapsed: Duration) {
         log::info!(
-            "{} ({}ms): DT {}us [AB {} TR {}] [ST {} SP {}] [RPY {} {} {}] [FSV {} {} {}] [BP {} {}ms] [TGT {} {} {} {}ms] [STILL {}ms]",
+            "{} ({}ms): DT {}us [AB {} TR {}] [ST {} SP {}] [RPY {} {} {}] [FSV {} {} {}] [BP {} {}ms] [TGT {} {} {} {}ms] [STILL {}]",
             index,
             elapsed.as_millis(),
             self.dt_us,
@@ -104,7 +102,7 @@ impl TraceEvent {
             if self.target_back { "BK" } else { "FW" },
             self.target.value(),
             self.remaining_target_ms,
-            self.stillness_ms,
+            self.stillness,
         );
     }
 }
@@ -126,7 +124,7 @@ const EMPTY_EVENT: TraceEvent = TraceEvent {
     remaining_target_ms: 0,
     target: Angle::ZERO,
     target_back: false,
-    stillness_ms: 0,
+    stillness: false,
     dt_us: 0,
 };
 

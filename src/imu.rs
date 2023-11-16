@@ -29,16 +29,20 @@ pub async fn imu_task(uart0: UART0, pin_16: PIN_16, pin_17: PIN_17) {
     let mut data = ImuData::init();
     let mut stillness_detector = ImuStillnessDetector::new();
 
+    let mut timestamp = Instant::now();
     loop {
         let mut buf = [0; 1];
 
         match embassy_time::with_timeout(Duration::from_secs(5), rx.read_exact(&mut buf)).await {
             Ok(result) => match result {
                 Ok(_) => {
+                    let now = Instant::now();
+                    let dt = now - timestamp;
+                    timestamp = now;
+
                     let received = buf[0];
                     if let Some(raw) = decoder.update(received) {
-                        let is_still = stillness_detector.detect_stillness(&raw);
-
+                        stillness_detector.process_data(&raw, now, dt);
                         // log::info!(
                         //     "IMU [R {} P {} Y {}] [F {} S {} V {}]",
                         //     raw.roll,
@@ -49,7 +53,7 @@ pub async fn imu_task(uart0: UART0, pin_16: PIN_16, pin_17: PIN_17) {
                         //     raw.vertical
                         // );
 
-                        data.update(&raw, is_still);
+                        data.update(&raw, now, dt, stillness_detector.last_stillness);
                         IMU_DATA.signal(data);
                     }
                 }
@@ -75,6 +79,12 @@ pub struct Bno080RawRvcData {
     counter: u8,
 }
 
+const STILLNESS_SIDE: i16 = 150;
+const STILLNESS_FORWARD: i16 = 150;
+const STILL_FOR: Duration = Duration::from_millis(50);
+const STILLNESS_TIME_WINDOW: Duration = Duration::from_millis(500);
+const STILLNESS_TIME_THRESHOLD: Duration = Duration::from_millis(350);
+
 #[derive(Clone, Copy)]
 pub struct ImuData {
     pub yaw: i16,
@@ -85,26 +95,80 @@ pub struct ImuData {
     pub vertical: i16,
     pub timestamp: Instant,
     pub dt: Duration,
-    pub stillness: Option<Duration>,
+    pub last_stillness: Option<Instant>,
 }
 
-const STILLNESS_SIDE: i16 = 150;
+impl ImuData {
+    pub fn is_still(&self, now: Instant) -> bool {
+        self.last_stillness
+            .map(|since| now - since < STILL_FOR)
+            .unwrap_or(false)
+    }
+}
 
+#[derive(Clone, Copy)]
+pub struct StillnessMemory {
+    pub time_window: Duration,
+    pub cumulative_stillness: Duration,
+}
+
+impl StillnessMemory {
+    pub fn new() -> Self {
+        Self {
+            time_window: Duration::from_ticks(0),
+            cumulative_stillness: Duration::from_ticks(0),
+        }
+    }
+
+    pub fn ended(&self) -> bool {
+        self.time_window >= STILLNESS_TIME_WINDOW
+    }
+
+    pub fn update(&mut self, dt: Duration, is_still: bool) {
+        self.time_window += dt;
+        if is_still {
+            self.cumulative_stillness += dt;
+        }
+    }
+
+    pub fn is_still(&self) -> bool {
+        self.cumulative_stillness >= STILLNESS_TIME_THRESHOLD
+    }
+}
+
+#[derive(Clone, Copy)]
 pub struct ImuStillnessDetector {
-    pub side: i16,
+    pub memory: Option<StillnessMemory>,
+    pub last_stillness: Option<Instant>,
 }
 
 impl ImuStillnessDetector {
     pub fn new() -> Self {
-        Self { side: 0 }
+        Self {
+            memory: None,
+            last_stillness: None,
+        }
     }
 
-    pub fn detect_stillness(&mut self, raw: &Bno080RawRvcData) -> bool {
-        if raw.side.abs() < STILLNESS_SIDE {
-            true
-        } else {
-            self.side = raw.side;
-            false
+    pub fn process_data(&mut self, raw: &Bno080RawRvcData, now: Instant, dt: Duration) {
+        let is_still = raw.side.abs() < STILLNESS_SIDE || raw.forward.abs() < STILLNESS_FORWARD;
+        match self.memory {
+            Some(mut memory) => {
+                memory.update(dt, is_still);
+                self.memory = if memory.ended() {
+                    if memory.is_still() {
+                        self.last_stillness = Some(now);
+                    }
+                    None
+                } else {
+                    Some(memory)
+                };
+            }
+            None => {
+                if is_still {
+                    self.memory = Some(StillnessMemory::new());
+                }
+            }
         }
     }
 }
@@ -122,21 +186,18 @@ impl ImuData {
             vertical: 0,
             timestamp: Instant::now(),
             dt: DT_MIN,
-            stillness: None,
+            last_stillness: None,
         }
     }
 
-    pub fn update(&mut self, data: &Bno080RawRvcData, is_still: bool) {
-        let now = Instant::now();
-        let dt = now - self.timestamp;
+    pub fn update(
+        &mut self,
+        data: &Bno080RawRvcData,
+        now: Instant,
+        dt: Duration,
+        last_stillness: Option<Instant>,
+    ) {
         let dt = if dt.as_micros() == 0 { DT_MIN } else { dt };
-
-        if is_still {
-            let since = self.stillness.unwrap_or(Duration::from_secs(0));
-            self.stillness = Some(since + dt);
-        } else {
-            self.stillness = None;
-        }
 
         self.yaw = data.yaw;
         self.pitch = data.pitch;
@@ -144,6 +205,8 @@ impl ImuData {
         self.side = data.side;
         self.forward = data.forward;
         self.vertical = data.vertical;
+
+        self.last_stillness = last_stillness;
 
         self.timestamp = now;
         self.dt = dt;
