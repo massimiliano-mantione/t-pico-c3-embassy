@@ -65,9 +65,9 @@ pub enum VisualStateH {
         downhill: bool,
     },
     Rgb {
-        r: u8,
-        g: u8,
-        b: u8,
+        r: u16,
+        g: u16,
+        b: u16,
     },
     ImuAngles {
         roll: Angle,
@@ -187,9 +187,9 @@ impl VisualStateH {
 
     pub fn rgb(&mut self, data: RgbEvent) {
         *self = Self::Rgb {
-            r: (data.r >> 2).min(255) as u8,
-            g: (data.g >> 2).min(255) as u8,
-            b: (data.b >> 2).min(255) as u8,
+            r: data.r,
+            g: data.g,
+            b: data.b,
         }
     }
 
@@ -388,21 +388,16 @@ impl VisualStateH {
                 .ok();
             }
             VisualStateH::Rgb { r, g, b } => {
-                let color = Rgb565::new(r, g, b);
+                let rb = (r >> 2).min(255) as u8;
+                let gb = (g >> 2).min(255) as u8;
+                let bb = (b >> 2).min(255) as u8;
+                let color = Rgb565::new(rb, gb, bb);
+
                 target
                     .fill_solid(&Rectangle::new(Self::position(index), Self::size()), color)
                     .ok();
 
-                let r3 = (r / 100) % 10;
-                let r2 = (r / 10) % 10;
-                let r1 = (r / 1) % 10;
-                let g3 = (g / 100) % 10;
-                let g2 = (g / 10) % 10;
-                let g1 = (g / 1) % 10;
-                let b3 = (b / 100) % 10;
-                let b2 = (b / 10) % 10;
-                let b1 = (b / 1) % 10;
-                let text = uformat!("{}{}{} {}{}{} {}{}{}", r3, r2, r1, g3, g2, g1, b3, b2, b1);
+                let text = uformat!("{} {} {}", r, g, b);
                 let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
                 Text::new(
                     text.as_str(),

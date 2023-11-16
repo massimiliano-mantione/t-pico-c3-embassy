@@ -57,10 +57,23 @@ struct RgbRanges {
     pub g_max: u16,
     pub b_min: u16,
     pub b_max: u16,
+    pub r_ratio: u16,
+    pub g_ratio: u16,
+    pub b_ratio: u16,
 }
 
+// fn matches_ratios(lead: u32, v1: u32, r1: u32, v2: u32, r2: u32) -> bool {
+//     if lead > 0 {
+//         let n1 = v1 * 100 / lead;
+//         let n2 = v2 * 100 / lead;
+//         n1 <= r1 * 100 && n2 <= r2 * 100
+//     } else {
+//         false
+//     }
+// }
+
 impl RgbRanges {
-    pub fn matches(&self, r: u16, g: u16, b: u16) -> bool {
+    pub fn matches_levels(&self, r: u16, g: u16, b: u16) -> bool {
         r >= self.r_min
             && r <= self.r_max
             && g >= self.g_min
@@ -68,24 +81,61 @@ impl RgbRanges {
             && b >= self.b_min
             && b <= self.b_max
     }
+
+    pub fn matches(&self, r: u16, g: u16, b: u16) -> bool {
+        self.matches_levels(r, g, b)
+        // && if self.r_ratio == 100 {
+        //     matches_ratios(
+        //         r as u32,
+        //         g as u32,
+        //         self.g_ratio as u32,
+        //         b as u32,
+        //         self.g_ratio as u32,
+        //     )
+        // } else if self.g_ratio == 100 {
+        //     matches_ratios(
+        //         g as u32,
+        //         r as u32,
+        //         self.r_ratio as u32,
+        //         b as u32,
+        //         self.g_ratio as u32,
+        //     )
+        // } else if self.b_ratio == 100 {
+        //     matches_ratios(
+        //         r as u32,
+        //         r as u32,
+        //         self.g_ratio as u32,
+        //         g as u32,
+        //         self.g_ratio as u32,
+        //     )
+        // } else {
+        //     false
+        // }
+    }
 }
 
 const RED: RgbRanges = RgbRanges {
-    r_min: 45,
+    r_min: 75,
     r_max: u16::MAX,
     g_min: 0,
     g_max: 60,
     b_min: 0,
     b_max: 70,
+    r_ratio: 100,
+    g_ratio: 60,
+    b_ratio: 60,
 };
 
 const GREEN: RgbRanges = RgbRanges {
     r_min: 0,
     r_max: 70,
-    g_min: 50,
+    g_min: 75,
     g_max: u16::MAX,
     b_min: 0,
     b_max: 110,
+    r_ratio: 60,
+    g_ratio: 100,
+    b_ratio: 60,
 };
 
 const DURATION_ZERO: Duration = Duration::from_secs(0);
