@@ -88,7 +88,7 @@ pub struct ImuData {
     pub stillness: Option<Duration>,
 }
 
-const STILLNESS_SIDE: i16 = 200;
+const STILLNESS_SIDE: i16 = 150;
 
 pub struct ImuStillnessDetector {
     pub side: i16,
