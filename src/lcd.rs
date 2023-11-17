@@ -12,7 +12,7 @@ use embassy_rp::{
 };
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
-use embassy_time::Delay;
+use embassy_time::{Delay, Duration, Instant};
 use embedded_graphics::mono_font::iso_8859_9::FONT_10X20;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::primitives::{
@@ -798,7 +798,9 @@ pub async fn tft_task(
     let mut current_state = VisualState::init();
 
     loop {
+        const MIN_FRAME_DT: Duration = Duration::from_millis(50);
         let new_state = VISUAL_STATE.wait().await;
+        let start = Instant::now();
 
         for (i, s) in new_state.values_h.iter().copied().enumerate() {
             if current_state.values_h[i] != s {
@@ -806,12 +808,17 @@ pub async fn tft_task(
                 current_state.values_h[i] = s;
             }
         }
-
         for (i, s) in new_state.values_v.iter().copied().enumerate() {
             if current_state.values_v[i] != s {
                 s.draw(i, &mut display);
                 current_state.values_v[i] = s;
             }
+        }
+
+        let done = Instant::now();
+        let elapsed = done - start;
+        if elapsed < MIN_FRAME_DT {
+            embassy_time::Timer::after(MIN_FRAME_DT - elapsed).await;
         }
     }
 }
