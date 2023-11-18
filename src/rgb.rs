@@ -11,7 +11,7 @@ pub type I2cBus1 = RpI2c<'static, I2C1, Async>;
 const RETRY_SECS: u64 = 1;
 
 const DETECT_COLOR_AT_LEAST_FOR: Duration = Duration::from_millis(10);
-const DETECT_CROSS_AT_MOST_SINCE: Duration = Duration::from_millis(50);
+const DETECT_CROSS_AT_MOST_SINCE: Duration = Duration::from_millis(1500);
 
 fn rgb2hsv(r: i32, g: i32, b: i32) -> (i32, i32, i32) {
     const HUE_DEGREE: i32 = 512;
@@ -66,17 +66,17 @@ impl RgbEvent {
     }
 
     pub fn detect_inversion(&self) -> bool {
-        self.is_green()
-            && self.last_green_for >= DETECT_COLOR_AT_LEAST_FOR
-            && self.not_red_for <= DETECT_CROSS_AT_MOST_SINCE
-            && self.last_red_for >= DETECT_COLOR_AT_LEAST_FOR
-    }
-
-    pub fn detect_good_cross(&self) -> bool {
         self.is_red()
             && self.last_red_for >= DETECT_COLOR_AT_LEAST_FOR
             && self.not_green_for <= DETECT_CROSS_AT_MOST_SINCE
             && self.last_green_for >= DETECT_COLOR_AT_LEAST_FOR
+    }
+
+    pub fn detect_good_cross(&self) -> bool {
+        self.is_green()
+            && self.last_green_for >= DETECT_COLOR_AT_LEAST_FOR
+            && self.not_red_for <= DETECT_CROSS_AT_MOST_SINCE
+            && self.last_red_for >= DETECT_COLOR_AT_LEAST_FOR
     }
 }
 
