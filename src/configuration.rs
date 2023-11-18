@@ -297,8 +297,8 @@ impl Default for RaceConfig {
 impl RaceConfig {
     pub const fn init() -> Self {
         Self {
-            max_speed: 4500,
-            min_speed: 4100,
+            max_speed: 4500, // 4650
+            min_speed: 4200, // 4500
             steer_bias: -5,
             safe_angle: 10,
             back_speed: 5000,
@@ -312,7 +312,7 @@ impl RaceConfig {
             back_distance_side_30: 60,
             back_distance_side_60: 50,
             slope_distance_delta: 150,
-            climbing_speed: 8000,
+            climbing_speed: 9000,
             climbing_angle: 15,
             climbing_ignore: 3,
             stillness_delta: 0,
