@@ -320,7 +320,7 @@ impl RaceConfig {
             use_stillness: 1,
             inversion_time: 750,
             post_inversion_time: 150,
-            climb_direction: 0,
+            climb_direction: 179,
             use_climb_direction: 1,
             use_color_inversion: 1,
         }
