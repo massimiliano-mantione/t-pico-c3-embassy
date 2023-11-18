@@ -20,7 +20,7 @@ fn rgb2hsv(r: i32, g: i32, b: i32) -> (i32, i32, i32) {
     let delta = max - min;
 
     let (h, s) = if delta == 0 {
-        (0, 0)
+        (-1, 0)
     } else {
         let h = if r == max {
             ((g - b) * 60 * HUE_DEGREE) / delta
@@ -34,10 +34,10 @@ fn rgb2hsv(r: i32, g: i32, b: i32) -> (i32, i32, i32) {
         let h = if h < 0 { h + 360 * HUE_DEGREE } else { h };
         let s = (256 * delta - 8) / max;
 
-        (h, s)
+        (h / HUE_DEGREE, s)
     };
 
-    (h / HUE_DEGREE, s, max)
+    (h, s, max)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -135,10 +135,22 @@ pub async fn rgb_task(i2c: I2cBus1) {
                 let (r, g, b, l) = (rgbc.red, rgbc.green, rgbc.blue, rgbc.clear);
                 let (h, s, v) = rgb2hsv(r as i32, g as i32, b as i32);
 
+                // 100 40 40
+                // 0 90 40
+                const RED_HUE: i32 = 1;
+                const RED_SAT: i32 = 90;
+                const GREEN_HUE: i32 = 110;
+                const GREEN_SAT: i32 = 40;
+                const MIN_VAL: i32 = 40;
                 const HUE_DELTA: i32 = 15;
-                const SAT_MIN: i32 = 128;
-                let red_matches = (h <= HUE_DELTA || h >= 360 - HUE_DELTA) && s >= SAT_MIN;
-                let green_matches = h >= 120 - HUE_DELTA && h <= 120 + HUE_DELTA && s >= SAT_MIN;
+                let red_matches = (h >= 0 && h <= RED_HUE + HUE_DELTA
+                    || h >= RED_HUE + 360 - HUE_DELTA)
+                    && s >= RED_SAT
+                    && v >= MIN_VAL;
+                let green_matches = h >= GREEN_HUE - HUE_DELTA
+                    && h <= GREEN_HUE + HUE_DELTA
+                    && s >= GREEN_SAT
+                    && v >= MIN_VAL;
                 let (h, s, v) = (h as u16, s as u16, v as u16);
 
                 if red_matches {
