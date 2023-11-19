@@ -78,6 +78,23 @@ impl RgbEvent {
             && self.not_red_for <= DETECT_CROSS_AT_MOST_SINCE
             && self.last_red_for >= DETECT_COLOR_AT_LEAST_FOR
     }
+
+    pub fn empty() -> Self {
+        Self {
+            dt: Duration::from_millis(10),
+            r: 0,
+            g: 0,
+            b: 0,
+            l: 0,
+            h: 0,
+            s: 0,
+            v: 0,
+            not_red_for: Duration::from_ticks(0),
+            not_green_for: Duration::from_ticks(0),
+            last_red_for: Duration::from_ticks(0),
+            last_green_for: Duration::from_ticks(0),
+        }
+    }
 }
 
 const DURATION_ZERO: Duration = Duration::from_secs(0);
@@ -115,6 +132,7 @@ pub async fn rgb_task(i2c: I2cBus1) {
         if init_error {
             embassy_time::Timer::after(Duration::from_secs(RETRY_SECS)).await;
             log::info!("RGB init error: retrying");
+            RGB.signal(RgbEvent::empty());
             continue;
         } else {
             break;
@@ -204,9 +222,11 @@ pub async fn rgb_task(i2c: I2cBus1) {
             }
             Ok(Err(_)) => {
                 log::info!("RGB read error");
+                RGB.signal(RgbEvent::empty());
                 embassy_time::Timer::after(Duration::from_secs(RETRY_SECS)).await;
             }
             Err(_) => {
+                RGB.signal(RgbEvent::empty());
                 log::info!("RGB read timeout");
             }
         }
