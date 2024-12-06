@@ -1,4 +1,5 @@
 use embassy_futures::select::{select4, Either4};
+use embassy_time::Instant;
 
 use crate::{
     cmd::{Cmd, CMD},
@@ -26,6 +27,11 @@ pub async fn run(config: &RaceConfig) -> Screen {
     ui.values_h[2].text_green("READY");
     ui.values_h[3].empty();
 
+    let now = Instant::now();
+    let mut last_las = now;
+    let mut last_imu = now;
+    let mut last_rgb = now;
+
     loop {
         match select4(
             RAW_LASER_READINGS.wait(),
@@ -36,12 +42,24 @@ pub async fn run(config: &RaceConfig) -> Screen {
         .await
         {
             Either4::First(data) => {
-                log::info!("L dt {}us", data.dt.as_micros());
+                let now = Instant::now();
+                log::info!(
+                    "LAS dt {}us p {}us",
+                    data.dt.as_micros(),
+                    now.duration_since(last_las).as_micros()
+                );
+                last_las = now;
                 v.update(&data, &config, current_pitch);
                 ui.update_vision(&v, None);
             }
             Either4::Second(data) => {
-                log::info!("IMU dt {}us", data.dt.as_micros());
+                let now = Instant::now();
+                log::info!(
+                    "IMU dt {}us p {}us",
+                    data.dt.as_micros(),
+                    now.duration_since(last_imu).as_micros()
+                );
+                last_imu = now;
                 current_pitch = Angle::from_imu_value(data.pitch);
                 ui.values_h[4].imu(
                     data.yaw,
@@ -62,7 +80,13 @@ pub async fn run(config: &RaceConfig) -> Screen {
                 }
             }
             Either4::Fourth(data) => {
-                log::info!("RGB dt {}us", data.dt.as_micros());
+                let now = Instant::now();
+                log::info!(
+                    "RGB dt {}us p {}us",
+                    data.dt.as_micros(),
+                    now.duration_since(last_rgb).as_micros()
+                );
+                last_rgb = now;
                 ui.values_h[3].rgb(data);
             }
         }
