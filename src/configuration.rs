@@ -299,6 +299,8 @@ impl RaceConfig {
         Self {
             max_speed: 4500, // 4650
             min_speed: 4200, // 4500
+            //max_speed: 3500, // 4650
+            //min_speed: 3200, // 4500
             steer_bias: -5,
             safe_angle: 10,
             back_speed: 5000,
@@ -317,12 +319,12 @@ impl RaceConfig {
             climbing_ignore: 3,
             stillness_delta: 0,
             stillness_time: 500,
-            use_stillness: 1,
+            use_stillness: 0,
             inversion_time: 750,
             post_inversion_time: 150,
             climb_direction: 179,
             use_climb_direction: 1,
-            use_color_inversion: 1,
+            use_color_inversion: 0,
         }
     }
 
